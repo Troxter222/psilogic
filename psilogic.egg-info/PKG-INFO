@@ -1,3 +1,20 @@
+Metadata-Version: 2.4
+Name: psilogic
+Version: 0.1.0
+Summary: PsiLogic: An Active Cancellation Optimizer for Deep Neural Networks
+Author-email: "Ali (Troxter222)" <troxtergrif@gmail.com>
+Project-URL: Homepage, https://github.com/Troxter222/psilogic
+Project-URL: Bug Tracker, https://github.com/Troxter222/psilogic/issues
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: torch>=1.9.0
+Dynamic: license-file
+
 <div align="center">
 
 # ΨLogic
@@ -7,7 +24,6 @@
 [![PyPI version](https://badge.fury.io/py/psilogic.svg)](https://badge.fury.io/py/psilogic)
 [![Python](https://img.shields.io/pypi/pyversions/psilogic)](https://pypi.org/project/psilogic)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18739857.svg)](https://doi.org/10.5281/zenodo.18739857)
 
 ```
 dΨ/dt = -iĤ·Ψ  −  γ·P·tanh(S_info)·Ψ
