@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "psilogic"
 version = "0.1.0"
 authors = [
-  { name="Ali (Troxter222)", email="твой_email@gmail.com" },
+  { name="Ali (Troxter222)", email="troxtergrif@gmail.com" },
 ]
 description = "PsiLogic: An Active Cancellation Optimizer for Deep Neural Networks"
 readme = "README.md"
