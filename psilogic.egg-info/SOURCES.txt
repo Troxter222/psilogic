@@ -1,0 +1,10 @@
+LICENSE
+README.md
+pyproject.toml
+psilogic/__init__.py
+psilogic/psilogic.py
+psilogic.egg-info/PKG-INFO
+psilogic.egg-info/SOURCES.txt
+psilogic.egg-info/dependency_links.txt
+psilogic.egg-info/requires.txt
+psilogic.egg-info/top_level.txt
