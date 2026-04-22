@@ -1,19 +1,19 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires =["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "psilogic"
-version = "0.1.0"
-authors = [
+version = "0.2.0"
+authors =[
   { name = "Ali (Troxter222)", email = "troxtergrif@gmail.com" },
 ]
 description = "PsiLogic: Active Cancellation Optimizer for Deep Neural Networks"
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "MIT"
 requires-python = ">=3.8"
 keywords = ["optimizer", "deep learning", "pytorch", "machine learning", "neural networks"]
-classifiers = [
+classifiers =[
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
@@ -23,21 +23,23 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
-dependencies = [
+dependencies =[
     "torch>=1.9.0",
 ]
 
 [project.optional-dependencies]
-dev = [
+dev =[
     "pytest>=7.0",
     "torchvision>=0.10",
 ]
-
 [project.urls]
+
 "Homepage"    = "https://github.com/Troxter222/psilogic"
 "Paper"       = "https://doi.org/10.5281/zenodo.18739857"
 "Bug Tracker" = "https://github.com/Troxter222/psilogic/issues"
 "Source"      = "https://github.com/Troxter222/psilogic"
+
+[tool.setuptools]
+packages =["psilogic"]
