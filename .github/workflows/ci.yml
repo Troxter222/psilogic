@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "dev"]
+  pull_request:
+    branches: ["main"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ──────────────────────────────────────────────
+  # 1. Fast quality gate — lint + type check
+  # ──────────────────────────────────────────────
+  quality:
+    name: "Lint & Type Check"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install quality tools
+        run: pip install ruff mypy torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Ruff — lint
+        run: ruff check . --output-format=github
+
+      - name: Ruff — format check
+        run: ruff format --check .
+
+      - name: Mypy — type check
+        run: mypy psilogic/psilogic.py --ignore-missing-imports --no-strict-optional
+
+  # ──────────────────────────────────────────────
+  # 2. Tests — matrix across Python versions
+  # ──────────────────────────────────────────────
+  test:
+    name: "Test · Python ${{ matrix.python-version }}"
+    needs: quality
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Install package + dev deps (CPU torch)
+        run: |
+          pip install --upgrade pip
+          pip install ".[dev]" \
+            --extra-index-url https://download.pytorch.org/whl/cpu
+
+      - name: Run tests with coverage
+        run: |
+          pytest tests/ \
+            --tb=short \
+            --cov=psilogic \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            -q
+
+      - name: Upload coverage (Python 3.11 only)
+        if: matrix.python-version == '3.11'
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # ──────────────────────────────────────────────
+  # 3. Smoke-test the package build itself
+  # ──────────────────────────────────────────────
+  build-check:
+    name: "Build & Install Check"
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Build wheel + sdist
+        run: |
+          pip install build
+          python -m build
+
+      - name: Install from wheel and smoke-test
+        run: |
+          pip install dist/*.whl \
+            --extra-index-url https://download.pytorch.org/whl/cpu
+          python -c "
+          from psilogic import (
+              PsiLogic, PsiLogicNLP, PsiLogicGPT, PsiLogicViT,
+              nlp_defaults, vision_defaults, gpt_scratch_defaults
+          )
+          import torch, torch.nn as nn
+          m = nn.Linear(4, 2)
+          opt = PsiLogic(m.parameters(), lr=1e-3)
+          x = torch.randn(2, 4)
+          m(x).sum().backward()
+          opt.step()
+          print('Smoke test passed — PsiLogic v6 OK')
+          "
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ github.sha }}
+          path: dist/
+          retention-days: 7
