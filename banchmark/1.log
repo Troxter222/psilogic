@@ -735,7 +735,7 @@ Downloading Tiny Shakespeare... OK
   PsiLogic          0.1432 ± 0.0055      0.3187 ± 0.0085       90.4140 ± 0.2487
   ──────────────────────────────────────────────────────────────────────────────────────────
 
-                     TASK 2 — nanoGPT / Tiny Shakespeare (char-level)                   
+                     TASK 2 — я / Tiny Shakespeare (char-level)                   
                                    2000 steps · 5 seeds                                 
   ──────────────────────────────────────────────────────────────────────────────────────────
   Optimizer              Train Loss             Val Loss

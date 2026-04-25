@@ -1,22 +1,20 @@
 """
 benchmark_all.py
 ================
-Честный, детерминированный и воспроизводимый бенчмарк трёх оптимизаторов:
-    Adam  |  AdamW  |  PsiLogicV4Fast
+Fair, deterministic, and reproducible benchmark for three optimizers:
+    Adam  |  AdamW  |  PsiLogic
 
-Задача 1: CIFAR-10  → кастомный ResNet-18 (3×3 conv1, без maxpool), 15 эпох, 10 сидов
-Задача 2: nanoGPT   → Tiny Shakespeare (char-level), 2000 шагов, 5 сидов
+Task 1: CIFAR-10  — custom ResNet-18 (3x3 conv1, no maxpool), 15 epochs, 10 seeds
+Task 2: nanoGPT   — Tiny Shakespeare (char-level), 2000 steps, 5 seeds
 
-Требования: torch >= 2.0, torchvision, tqdm
-GPU: рекомендуется RTX 3090 / A5000 / A100 (см. README в конце файла)
+Requirements: torch >= 2.0, torchvision, tqdm
+Recommended GPU: RTX 3090 / A5000 / A100 (see notes at the bottom of this file)
 """
 
-# ───────────────────────────── std-lib ──────────────────────────────────────
 import os, sys, math, random, time, urllib.request, urllib.error
 from pathlib import Path
 from collections import defaultdict
 
-# ───────────────────────────── third-party ──────────────────────────────────
 import numpy as np
 import torch
 import torch.nn as nn
@@ -26,15 +24,15 @@ import torchvision
 import torchvision.transforms as T
 from torch.optim import Adam, AdamW
 from torch.cuda.amp import GradScaler, autocast
-
-# ════════════════════════════════════════════════════════════════════════════
-#  PsiLogicV4Fast (встроено для нулевой зависимости от внешних файлов)
-# ════════════════════════════════════════════════════════════════════════════
 from torch.optim.optimizer import Optimizer
 
 
+# ════════════════════════════════════════════════════════════════════════════
+#  PsiLogicV4Fast — self-contained copy (no external file dependency)
+# ════════════════════════════════════════════════════════════════════════════
+
 class PsiLogicV4Fast(Optimizer):
-    """ΨLogic v4 — минимальная CPU/GPU синхронизация, чистая GPU-ветка."""
+    """ΨLogic v4 — minimal CPU/GPU synchronization, clean CUDA path."""
 
     def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), weight_decay=1e-4,
                  gamma=0.05, p_ext=1.2, quantum_decay=1e-3, eps=1e-8,
@@ -128,16 +126,16 @@ class PsiLogicV4Fast(Optimizer):
 
 
 # ════════════════════════════════════════════════════════════════════════════
-#  Утилиты
+#  Utilities
 # ════════════════════════════════════════════════════════════════════════════
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DEVICE   = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 DATA_DIR = Path("./data")
 DATA_DIR.mkdir(exist_ok=True)
 
 
 def seed_everything(seed: int):
-    """Побитово детерминированный прогон."""
+    """Set all random seeds for fully deterministic, reproducible runs."""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -147,7 +145,7 @@ def seed_everything(seed: int):
 
 
 def make_optimizer(name: str, params, lr: float, steps_total: int):
-    """Фабрика оптимизаторов с одинаковыми гиперпараметрами там, где возможно."""
+    """Optimizer factory — identical hyperparameters where applicable."""
     wd = 1e-4
     if name == "Adam":
         return Adam(params, lr=lr, betas=(0.9, 0.999), eps=1e-8)
@@ -163,10 +161,8 @@ def make_optimizer(name: str, params, lr: float, steps_total: int):
 
 
 # ════════════════════════════════════════════════════════════════════════════
-#  ЗАДАЧА 1 — CIFAR-10 + кастомный ResNet-18
+#  Task 1 — CIFAR-10 + custom ResNet-18
 # ════════════════════════════════════════════════════════════════════════════
-
-# ── Архитектура ──────────────────────────────────────────────────────────────
 
 class BasicBlock(nn.Module):
     expansion = 1
@@ -192,8 +188,14 @@ class BasicBlock(nn.Module):
 
 
 class ResNet18CIFAR(nn.Module):
-    """ResNet-18 адаптированный под 32×32: 3×3 conv1, stride=1, без MaxPool."""
+    """
+    ResNet-18 adapted for 32x32 images.
 
+    Key differences from the ImageNet architecture:
+    - 3x3 initial convolution with stride=1 instead of 7x7 / stride-2
+    - No MaxPool after the stem
+    - Identity skip on the first residual block
+    """
     def __init__(self, num_classes=10):
         super().__init__()
         self.in_planes = 64
@@ -221,8 +223,6 @@ class ResNet18CIFAR(nn.Module):
         return self.fc(x)
 
 
-# ── Данные ────────────────────────────────────────────────────────────────────
-
 def get_cifar10_loaders(batch_size=128):
     mean = (0.4914, 0.4822, 0.4465)
     std  = (0.2470, 0.2435, 0.2616)
@@ -242,8 +242,6 @@ def get_cifar10_loaders(batch_size=128):
     return train_loader, val_loader
 
 
-# ── Один прогон CIFAR-10 ───────────────────────────────────────────────────
-
 def run_cifar10(opt_name: str, seed: int, epochs: int = 15):
     seed_everything(seed)
     train_loader, val_loader = get_cifar10_loaders()
@@ -253,13 +251,12 @@ def run_cifar10(opt_name: str, seed: int, epochs: int = 15):
     steps = epochs * len(train_loader)
     opt   = make_optimizer(opt_name, model.parameters(), lr, steps)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs)
-    scaler = GradScaler(enabled=(DEVICE.type == "cuda"))
+    scaler    = GradScaler(enabled=(DEVICE.type == "cuda"))
     criterion = nn.CrossEntropyLoss()
-
-    history = {"train_loss": [], "val_loss": [], "val_acc": []}
+    history   = {"train_loss": [], "val_loss": [], "val_acc": []}
 
     for epoch in range(1, epochs + 1):
-        # ── train ──
+        # Train
         model.train()
         running_loss = 0.0; n = 0
         for xb, yb in train_loader:
@@ -276,7 +273,7 @@ def run_cifar10(opt_name: str, seed: int, epochs: int = 15):
         sched.step()
         train_loss = running_loss / n
 
-        # ── val ──
+        # Validate
         model.eval()
         val_loss = 0.0; correct = 0; total = 0
         with torch.no_grad():
@@ -301,10 +298,8 @@ def run_cifar10(opt_name: str, seed: int, epochs: int = 15):
 
 
 # ════════════════════════════════════════════════════════════════════════════
-#  ЗАДАЧА 2 — nanoGPT (char-level) + Tiny Shakespeare
+#  Task 2 — nanoGPT (char-level) + Tiny Shakespeare
 # ════════════════════════════════════════════════════════════════════════════
-
-# ── Скачивание датасета ────────────────────────────────────────────────────
 
 SHAKESPEARE_URL  = "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt"
 SHAKESPEARE_PATH = DATA_DIR / "tiny_shakespeare.txt"
@@ -321,8 +316,6 @@ def download_shakespeare():
         print(f"FAILED: {e}")
         sys.exit(1)
 
-
-# ── Датасет ───────────────────────────────────────────────────────────────
 
 class CharDataset(Dataset):
     def __init__(self, data: torch.Tensor, block_size: int):
@@ -355,13 +348,11 @@ def get_shakespeare_loaders(block_size: int = 128, batch_size: int = 64):
     return train_loader, val_loader, vocab
 
 
-# ── nanoGPT архитектура ───────────────────────────────────────────────────
-
 class CausalSelfAttention(nn.Module):
     def __init__(self, d_model, n_heads, block_size, dropout=0.1):
         super().__init__()
         assert d_model % n_heads == 0
-        self.n_heads = n_heads
+        self.n_heads  = n_heads
         self.head_dim = d_model // n_heads
         self.qkv  = nn.Linear(d_model, 3 * d_model, bias=False)
         self.proj = nn.Linear(d_model, d_model, bias=False)
@@ -415,7 +406,7 @@ class NanoGPT(nn.Module):
         ])
         self.ln_f  = nn.LayerNorm(d_model)
         self.head  = nn.Linear(d_model, vocab_size, bias=False)
-        # weight tying
+        # Weight tying
         self.head.weight = self.tok_emb.weight
         self.apply(self._init_weights)
 
@@ -439,8 +430,6 @@ class NanoGPT(nn.Module):
         return logits, loss
 
 
-# ── Один прогон nanoGPT ────────────────────────────────────────────────────
-
 def run_nanogpt(opt_name: str, seed: int, total_steps: int = 2000,
                 block_size: int = 128, batch_size: int = 64):
     seed_everything(seed)
@@ -452,9 +441,9 @@ def run_nanogpt(opt_name: str, seed: int, total_steps: int = 2000,
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=total_steps)
     scaler = GradScaler(enabled=(DEVICE.type == "cuda"))
 
-    train_iter = iter(train_loader)
-    step  = 0
-    best_val_loss = float("inf")
+    train_iter      = iter(train_loader)
+    step            = 0
+    best_val_loss   = float("inf")
     last_train_loss = float("nan")
 
     while step < total_steps:
@@ -477,13 +466,13 @@ def run_nanogpt(opt_name: str, seed: int, total_steps: int = 2000,
         last_train_loss = loss.item()
         step += 1
 
-        # Валидация каждые 200 шагов
+        # Validate every 200 steps
         if step % 200 == 0 or step == total_steps:
             model.eval()
             val_losses = []
             with torch.no_grad():
                 for i, (xv, yv) in enumerate(val_loader):
-                    if i >= 50: break   # ограничим для скорости
+                    if i >= 50: break
                     xv, yv = xv.to(DEVICE, non_blocking=True), yv.to(DEVICE, non_blocking=True)
                     with autocast(enabled=(DEVICE.type == "cuda")):
                         _, vl = model(xv, yv)
@@ -495,7 +484,7 @@ def run_nanogpt(opt_name: str, seed: int, total_steps: int = 2000,
                   f"train_loss={last_train_loss:.4f}  "
                   f"val_loss={val_loss:.4f}", flush=True)
 
-    # Финальная валидация
+    # Final validation over more batches
     model.eval()
     val_losses = []
     with torch.no_grad():
@@ -511,27 +500,26 @@ def run_nanogpt(opt_name: str, seed: int, total_steps: int = 2000,
 
 
 # ════════════════════════════════════════════════════════════════════════════
-#  ASCII-таблица результатов
+#  Results table
 # ════════════════════════════════════════════════════════════════════════════
 
 def fmt(vals):
     a = np.mean(vals); s = np.std(vals)
-    return f"{a:.4f} ± {s:.4f}"
+    return f"{a:.4f} +/- {s:.4f}"
 
 
 def print_table(cifar_results, gpt_results, opt_names):
-    """Вывод красивой ASCII-таблицы."""
-    sep  = "─" * 90
-    sep2 = "═" * 90
+    """Print a formatted ASCII summary table to stdout."""
+    sep  = "-" * 90
+    sep2 = "=" * 90
 
     print("\n")
     print(sep2)
-    print("  BENCHMARK RESULTS  ·  Mean ± Std across seeds")
+    print("  BENCHMARK RESULTS  --  Mean +/- Std across seeds")
     print(sep2)
 
-    # ── CIFAR-10 ──
-    print(f"\n  {'TASK 1 — CIFAR-10 (ResNet-18)':^86}")
-    print(f"  {'15 epochs · 10 seeds':^86}")
+    print(f"\n  {'TASK 1 -- CIFAR-10 (ResNet-18)':^86}")
+    print(f"  {'15 epochs -- 10 seeds':^86}")
     print(f"  {sep}")
     print(f"  {'Optimizer':<14} {'Train Loss':>18} {'Val Loss':>20} {'Val Acc (%)':>22}")
     print(f"  {sep}")
@@ -543,9 +531,8 @@ def print_table(cifar_results, gpt_results, opt_names):
         print(f"  {opt:<14} {tl:>18} {vl:>20} {va:>22}")
     print(f"  {sep}")
 
-    # ── nanoGPT ──
-    print(f"\n  {'TASK 2 — nanoGPT / Tiny Shakespeare (char-level)':^86}")
-    print(f"  {'2000 steps · 5 seeds':^86}")
+    print(f"\n  {'TASK 2 -- nanoGPT / Tiny Shakespeare (char-level)':^86}")
+    print(f"  {'2000 steps -- 5 seeds':^86}")
     print(f"  {sep}")
     print(f"  {'Optimizer':<14} {'Train Loss':>18} {'Val Loss':>20}")
     print(f"  {sep}")
@@ -560,7 +547,7 @@ def print_table(cifar_results, gpt_results, opt_names):
 
 
 # ════════════════════════════════════════════════════════════════════════════
-#  MAIN
+#  Entry point
 # ════════════════════════════════════════════════════════════════════════════
 
 def main():
@@ -572,33 +559,32 @@ def main():
     print(f"{'='*60}\n")
 
     OPT_NAMES   = ["Adam", "AdamW", "PsiLogic"]
-    CIFAR_SEEDS = list(range(10))          # 0..9
-    GPT_SEEDS   = list(range(5))           # 0..4
+    CIFAR_SEEDS = list(range(10))   # seeds 0-9
+    GPT_SEEDS   = list(range(5))    # seeds 0-4
 
     cifar_results = defaultdict(list)
     gpt_results   = defaultdict(list)
 
-    # ── Задача 1: CIFAR-10 ────────────────────────────────────────────────
-    print("▶ Starting Task 1: CIFAR-10\n")
+    # Task 1: CIFAR-10
+    print("Starting Task 1: CIFAR-10\n")
     t0 = time.time()
     for seed in CIFAR_SEEDS:
-        print(f"\n── Seed {seed} ─────────────────────────────────")
+        print(f"\n-- Seed {seed} -----------------------------------------")
         for opt_name in OPT_NAMES:
             res = run_cifar10(opt_name, seed=seed, epochs=15)
             cifar_results[opt_name].append(res)
-    print(f"\n✓ Task 1 done in {(time.time()-t0)/60:.1f} min\n")
+    print(f"\nTask 1 done in {(time.time()-t0)/60:.1f} min\n")
 
-    # ── Задача 2: nanoGPT ─────────────────────────────────────────────────
-    print("▶ Starting Task 2: nanoGPT / Tiny Shakespeare\n")
+    # Task 2: nanoGPT / Tiny Shakespeare
+    print("Starting Task 2: nanoGPT / Tiny Shakespeare\n")
     t1 = time.time()
     for seed in GPT_SEEDS:
-        print(f"\n── Seed {seed} ─────────────────────────────────")
+        print(f"\n-- Seed {seed} -----------------------------------------")
         for opt_name in OPT_NAMES:
             res = run_nanogpt(opt_name, seed=seed, total_steps=2000)
             gpt_results[opt_name].append(res)
-    print(f"\n✓ Task 2 done in {(time.time()-t1)/60:.1f} min\n")
+    print(f"\nTask 2 done in {(time.time()-t1)/60:.1f} min\n")
 
-    # ── Таблица ───────────────────────────────────────────────────────────
     print_table(cifar_results, gpt_results, OPT_NAMES)
 
     total_min = (time.time() - t0) / 60
@@ -611,29 +597,25 @@ if __name__ == "__main__":
 
 # ════════════════════════════════════════════════════════════════════════════
 #
-#  РЕКОМЕНДАЦИИ ДЛЯ RUNPOD
-#  ────────────────────────
-#  GPU (рекомендации по приоритету):
-#    1. RTX 3090 (24 GB) — оптимальный выбор: дёшево, 24 GB VRAM, быстро
-#    2. RTX A5000 (24 GB) — профессиональный вариант, чуть надёжнее
-#    3. A100 40 GB / 80 GB — если нужна максимальная скорость, ~3× быстрее 3090
+#  Cloud / RunPod setup notes
+#  --------------------------
+#  Recommended GPUs (priority order):
+#    1. RTX 3090 (24 GB) -- best value, 24 GB VRAM, fast
+#    2. RTX A5000 (24 GB) -- professional grade, slightly more reliable
+#    3. A100 40/80 GB -- maximum throughput, ~3x faster than RTX 3090
 #
-#  Ориентир по времени (RTX 3090):
-#    Task 1 (CIFAR-10):
-#      ~3 мин/прогон × 3 оптимизатора × 10 сидов = ~90 мин
-#    Task 2 (nanoGPT):
-#      ~4 мин/прогон × 3 оптимизатора × 5 сидов  = ~60 мин
-#    ИТОГО: ~2.5 часа
+#  Estimated wall time (RTX 3090):
+#    Task 1 (CIFAR-10):  ~3 min/run x 3 optimizers x 10 seeds = ~90 min
+#    Task 2 (nanoGPT):   ~4 min/run x 3 optimizers x 5 seeds  = ~60 min
+#    Total:              ~2.5 hours
+#    On A100: ~50-60 minutes total.
 #
-#    На A100: ~50–60 минут суммарно.
+#  How to run on RunPod:
+#    1. Select the "PyTorch 2.x" template (includes torch + torchvision)
+#    2. Upload this file via rsync, scp, or the Jupyter file browser
+#    3. Run: python benchmark_all.py | tee results.log
 #
-#  Как запустить на RunPod:
-#    1. Выберите шаблон "PyTorch 2.x" (уже содержит torch + torchvision)
-#    2. Залейте файл: rsync / scp / jupyter upload
-#    3. Запустите: python benchmark_all.py | tee results.log
-#       (tee сохраняет вывод в файл — полезно для длинных прогонов)
-#
-#  Установка зависимостей (если нужно):
+#  Install dependencies (if needed):
 #    pip install torch torchvision tqdm --quiet
 #
 # ════════════════════════════════════════════════════════════════════════════
