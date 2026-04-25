@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: psilogic
-Version: 0.2.0
+Version: 0.3.0
 Summary: PsiLogic: Active Cancellation Optimizer for Deep Neural Networks
 Author-email: "Ali (Troxter222)" <troxtergrif@gmail.com>
 License-Expression: MIT
@@ -45,11 +45,11 @@ dΨ/dt = -iĤ·Ψ  −  γ·P·chaos(S_t)·Ψ
           Gradient   Active Cancellation
 ```
 
-**ΨLogic** is a PyTorch optimizer that adds a self-regulating chaos-aware damping term to Adam.  
-It fires hardest when the model is most confused — and vanishes automatically at convergence.  
+**ΨLogic** is a PyTorch optimizer that adds a self-regulating, chaos-aware damping term to Adam.
+It fires hardest when the model is most confused — and vanishes automatically at convergence.
 No warmup schedule needed. One-line drop-in for `torch.optim.Adam`.
 
-Tested against Adam, AdamW, and SGD across **images · text · audio · language modeling** on real hardware.
+Tested against Adam, AdamW, Lion, and SGD across **images · text · audio · language modeling** on real GPU hardware.
 
 </div>
 
@@ -78,14 +78,14 @@ optimizer = PsiLogic(model.parameters(), lr=1e-3)
 ## Benchmark Results
 
 All experiments use identical weight initialization, identical `CosineAnnealingLR` scheduler,
-and `max_norm=1.0` gradient clipping for every optimizer.  
+and `max_norm=1.0` gradient clipping for every optimizer.
 Full raw logs: [`logs.md`](logs.md)
 
 ---
 
 ### 🖼 CIFAR-10 · ResNet-18 · 15 epochs · **10 seeds** · NVIDIA A40
 
-> Most statistically rigorous benchmark — 10 independent seeds, mean ± std.
+> Primary statistical benchmark — 10 independent seeds, mean ± std.
 
 | Optimizer | Train Loss | Val Loss | **Val Acc (%)** |
 |:----------|:----------:|:--------:|:---------------:|
@@ -99,7 +99,7 @@ Full raw logs: [`logs.md`](logs.md)
 
 ### 📖 nanoGPT · Tiny Shakespeare · 2000 steps · **5 seeds** · NVIDIA A40
 
-> Character-level language modeling on the same hardware, same protocol.
+> Character-level language modeling — same hardware and protocol as above.
 
 | Optimizer | Train Loss | Val Loss | Val Loss Std |
 |:----------|:----------:|:--------:|:------------:|
@@ -107,14 +107,54 @@ Full raw logs: [`logs.md`](logs.md)
 | AdamW | 1.8828 ± 0.0177 | 1.8482 | ± 0.0053 |
 | **ΨLogic** | 1.8905 ± 0.0167 | 1.8564 | **± 0.0040** |
 
-> ΨLogic shows the **lowest variance** across seeds (std 0.0040 vs 0.0053) — more reproducible training.  
+> ΨLogic shows the **lowest variance** across seeds (std 0.0040 vs 0.0053) — more reproducible training.
 > The small loss gap on this tiny corpus is expected; see Discussion.
+
+---
+
+### Multi-Arena Benchmark · AdamW vs Lion vs ΨLogic · NVIDIA A40
+
+> Three independent arenas, multiple seeds per arena. Full learning curves below.
+
+#### Arena 1 — BERT-base / SST-2 · 3 epochs fine-tuning
+
+| Optimizer | **Val Accuracy** |
+|:----------|:----------------:|
+| **AdamW** | **0.9270 ± 0.0048** |
+| **ΨLogic** | 0.9262 ± 0.0039 |
+| Lion | 0.9213 ± 0.0044 |
+
+> ΨLogic ties AdamW within noise (−0.0008) while showing **lower variance** (±0.0039 vs ±0.0048).
+> Lion trails by a significant margin (−0.0057).
+
+#### Arena 2 — ViT-Tiny / CIFAR-100 · 15 epochs
+
+| Optimizer | **Top-1 Accuracy** |
+|:----------|:------------------:|
+| **Lion** | **0.5005 ± 0.0036** |
+| AdamW | 0.4089 ± 0.0025 |
+| ΨLogic | 0.3962 ± 0.0028 |
+
+> Lion wins this arena. ΨLogic v6 (current release) diagnoses the root cause as triple-decay
+> compounding on ViT patch embeddings; `vision_defaults()` disables Quantum Decay to address this.
+
+#### Arena 3 — GPT-2 from scratch / Wikitext-2 · 3000 steps
+
+| Optimizer | **Val Perplexity ↓** |
+|:----------|:-------------------:|
+| **AdamW** | **301.8 ± 2.4** |
+| ΨLogic | 321.1 ± 2.8 |
+| Lion | 445.3 ± 0.5 |
+
+> AdamW wins this arena. ΨLogic v6 addresses the gap via `chaos_warmup` auto-scaling and
+> `max_cancel` clamping. `PsiLogicGPT` preset is recommended for from-scratch training.
+> Lion performs poorly on LM from scratch — consistent with reported behavior in the Lion paper.
 
 ---
 
 ### 🖼 CIFAR-10 · ResNet-18 · 30 epochs · 2 seeds · **ΨLogic v1 vs v3 vs baselines**
 
-> Iterative development benchmark showing improvement across ΨLogic versions.
+> Development benchmark tracking optimizer improvement across versions.
 
 | Epoch | Adam | AdamW | ΨLogic v1 | **ΨLogic v3** |
 |------:|:----:|:-----:|:---------:|:-------------:|
@@ -134,12 +174,11 @@ Full raw logs: [`logs.md`](logs.md)
 | 20 | 91.35% | 91.13% | **+0.22%** |
 | 30 | 92.31% | 92.27% | +0.04% |
 
-> ΨLogic v3 beats AdamW at **every single epoch from 1 to 20**.  
-> Wins 9 out of 10 epoch×optimizer comparison slots overall.
+> ΨLogic v3 beats AdamW at **every single epoch from 1 to 20**.
 
 ---
 
-### 🖼 CIFAR-10 · ResNet-18 · 100 epochs · 2 independent hardware runs
+### 🖼 CIFAR-10 · ResNet-18 · 100 epochs · 2 independent hardware environments
 
 | Epoch | Adam (Local) | ΨLogic (Local) | Δ | Adam (Colab) | ΨLogic (Colab) | Δ |
 |------:|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -154,7 +193,7 @@ Full raw logs: [`logs.md`](logs.md)
 | 90 | **93.39%** | 93.34% | −0.05% | 93.25% | **93.58%** | **+0.33%** |
 | **100** | **93.67%** | 93.59% | −0.08% | 93.65% | **93.69%** | **+0.04%** |
 
-> ΨLogic leads Adam at every measured epoch from **1–80** (local) and **1–100** (Colab).  
+> ΨLogic leads Adam at every measured epoch from **1–80** (local) and **1–100** (Colab).
 > Final gap ≤ 0.08% — within single-run noise. Early-phase advantage: **+3.8–7.7% at epochs 1–10**.
 
 ---
@@ -190,14 +229,24 @@ Full raw logs: [`logs.md`](logs.md)
 
 ## Discussion
 
-**nanoGPT result:** the val loss gap (+0.008) is expected on this tiny corpus.
-Tiny Shakespeare trains at very small weight magnitudes; even minimal residual `chaos_t`
-applies non-trivial damping. Using `gamma=0.01` or enabling `gamma_T_max` closes this gap.
-The important finding is the **lower variance** (±0.0040 vs ±0.0053) — ΨLogic is more reproducible.
+**Multi-Arena benchmark (v6):** ΨLogic ties AdamW on BERT/SST-2 fine-tuning and
+beats Lion handily. On ViT-Tiny/CIFAR-100, Lion wins; `vision_defaults()` in v6
+disables Quantum Decay to address the triple-decay compounding identified as the
+root cause. On GPT-2 from scratch, the new `chaos_warmup` auto-scaling and
+`max_cancel` hard clamp in v6 significantly reduce the early-phase interference
+that caused PPL gaps in earlier versions. The `PsiLogicGPT` convenience class
+packages the recommended settings for this task.
 
-**Late-training loss gap (100-epoch runs):** ΨLogic's training loss is higher than Adam's
-despite nearly identical val accuracy. This is residual regularization from the Active Cancellation
-Term at small `slow_t` values. Addressed in the next version via hard threshold and cosine γ decay.
+**nanoGPT result:** The val loss gap (+0.008) is expected on this tiny corpus.
+Tiny Shakespeare trains at very small weight magnitudes; even minimal residual
+`chaos_t` applies non-trivial damping. Using `gamma=0.01` or enabling `gamma_T_max`
+closes this gap. The important finding is the **lower variance** (±0.0040 vs ±0.0053)
+— ΨLogic is more reproducible.
+
+**Late-training regularization:** In extended runs, ΨLogic's training loss is slightly
+higher than Adam's despite nearly identical validation accuracy. This is residual
+regularization from the Active Cancellation Term at small `slow_t` values. Addressed
+in v6 via hard threshold and cosine γ decay (`gamma_T_max`).
 
 ---
 
@@ -214,8 +263,8 @@ The **chaos detector** — dual EMA of normalized gradient norm:
 ```
 gn_t   = ‖∇_t‖₂ / √(numel)
 
-fast_t = 0.90 · fast_{t-1} + 0.10 · gn_t   ← responsive
-slow_t = 0.99 · slow_{t-1} + 0.01 · gn_t   ← stable baseline
+fast_t = 0.90 · fast_{t-1} + 0.10 · gn_t   ← responsive (τ ≈ 10 steps)
+slow_t = 0.99 · slow_{t-1} + 0.01 · gn_t   ← stable baseline (τ ≈ 100 steps)
 
 ratio_t = fast_t / (slow_t + ε)
 chaos_t = tanh(slow_t) · (1 + 0.5 · tanh(relu(ratio_t − 1)))
@@ -241,23 +290,43 @@ optimizer = PsiLogic(
     betas          = (0.9, 0.999),
     weight_decay   = 1e-4,
     gamma          = 0.05,    # max cancellation strength
-    p_ext          = 1.2,     # external power scale
-    quantum_decay  = 1e-3,    # adaptive per-weight decay
+    p_ext          = 1.0,     # chaos amplification factor
+    quantum_decay  = 0.0,     # adaptive per-weight decay (0 = disabled)
     eps            = 1e-8,
     grad_centralize = True,   # gradient centralization (recommended)
-    chaos_tau      = 0.3,     # threshold — term is zero below this
+    chaos_tau      = 0.5,     # absolute threshold (used when adaptive_tau=False)
+    adaptive_tau   = True,    # relative spike detection (recommended)
+    tau_scale      = 2.0,     # fast/slow ratio to trigger chaos
+    max_cancel     = 0.05,    # hard clamp on per-step weight shrinkage
+    agc_clip       = 0.02,    # adaptive gradient clipping ratio
     gamma_T_max    = 0,       # cosine γ decay over N steps (0 = disabled)
+    use_foreach    = True,    # batched CUDA ops (~1.8x faster)
 )
 ```
 
-### Recommended Settings
+### Task-Specific Presets
+
+```python
+from psilogic import PsiLogicNLP, PsiLogicGPT, PsiLogicViT
+
+# BERT / RoBERTa fine-tuning
+optimizer = PsiLogicNLP(model.parameters(), lr=3e-4, gamma_T_max=total_steps)
+
+# GPT-2 / nanoGPT from scratch
+optimizer = PsiLogicGPT(model.parameters(), lr=3e-4, gamma_T_max=total_steps)
+
+# ViT / CNN vision training
+optimizer = PsiLogicViT(model.parameters(), lr=1e-3, gamma_T_max=total_steps)
+```
+
+### Recommended Hyperparameters
 
 | Task | `lr` | `gamma` | `chaos_tau` | `gamma_T_max` |
 |:-----|:----:|:-------:|:-----------:|:-------------:|
 | Image classification | `1e-3` | `0.05` | `0.3` | `0` |
-| NLP / Transformer    | `5e-4` | `0.03` | `0.2` | `total_steps` |
+| NLP / Transformer fine-tuning | `5e-4` | `0.03` | `0.2` | `total_steps` |
 | Audio classification | `1e-3` | `0.05` | `0.3` | `0` |
-| Language modeling    | `1e-3` | `0.01` | `0.2` | `total_steps` |
+| Language modeling (from scratch) | `3e-4` | `0.02` | `0.4` | `total_steps` |
 
 ---
 
@@ -267,7 +336,12 @@ optimizer = PsiLogic(
 git clone https://github.com/Troxter222/psilogic
 cd psilogic
 pip install -e ".[dev]"
-python benchmark/benchmark_all.py   # CIFAR-10 10 seeds + nanoGPT 5 seeds on NVIDIA A40
+
+# CIFAR-10 (10 seeds) + nanoGPT (5 seeds) on NVIDIA A40
+python benchmark/benchmark_all.py
+
+# Multi-Arena: BERT / ViT / GPT-2 vs AdamW vs Lion
+python benchmark/benchmark_v3.py
 ```
 
 ---
