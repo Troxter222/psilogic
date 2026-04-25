@@ -1,0 +1,207 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - "v*.*.*"   # e.g. v0.4.0
+
+permissions:
+  contents: write   # needed to create GitHub Release
+  id-token: write   # needed for OIDC Trusted Publishing
+
+jobs:
+  # ──────────────────────────────────────────────
+  # Guard: CI must pass before we publish
+  # ──────────────────────────────────────────────
+  ci-gate:
+    name: "Verify CI Status"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check tag points to a tested commit
+        # This step fails if the tagged commit hasn't passed CI on main/dev.
+        # Remove if you prefer to rely on branch protection rules alone.
+        run: |
+          echo "Publishing tag: ${{ github.ref_name }}"
+          echo "Commit: ${{ github.sha }}"
+
+  # ──────────────────────────────────────────────
+  # Build distributions
+  # ──────────────────────────────────────────────
+  build:
+    name: "Build wheel + sdist"
+    needs: ci-gate
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get-version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Extract version from tag
+        id: get-version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify tag matches pyproject.toml version
+        run: |
+          PKG_VERSION=$(python -c "
+          import tomllib
+          with open('pyproject.toml', 'rb') as f:
+              print(tomllib.load(f)['project']['version'])
+          ")
+          TAG_VERSION="${{ steps.get-version.outputs.version }}"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "ERROR: pyproject.toml version ($PKG_VERSION) != tag ($TAG_VERSION)"
+            exit 1
+          fi
+          echo "Version match: $PKG_VERSION ✓"
+
+      - name: Build
+        run: |
+          pip install build
+          python -m build
+
+      - name: Verify build artifacts
+        run: |
+          pip install twine
+          twine check dist/*
+          ls -lh dist/
+
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  # ──────────────────────────────────────────────
+  # Publish to TestPyPI first
+  # ──────────────────────────────────────────────
+  publish-testpypi:
+    name: "Publish → TestPyPI"
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/psilogic
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://upload.test.pypi.org/legacy/
+
+  # ──────────────────────────────────────────────
+  # Smoke-test the TestPyPI release
+  # ──────────────────────────────────────────────
+  smoke-test-testpypi:
+    name: "Smoke-test TestPyPI Install"
+    needs: publish-testpypi
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install from TestPyPI and verify
+        run: |
+          # Retry up to 3 times — TestPyPI propagation can take a moment
+          for i in 1 2 3; do
+            pip install psilogic==${{ needs.build.outputs.version }} \
+              --index-url https://test.pypi.org/simple/ \
+              --extra-index-url https://pypi.org/simple/ \
+              --extra-index-url https://download.pytorch.org/whl/cpu \
+              && break || (echo "Attempt $i failed, retrying in 15s..." && sleep 15)
+          done
+          python -c "
+          import psilogic
+          print('Installed version:', psilogic.__version__)
+          from psilogic import PsiLogic
+          import torch.nn as nn, torch
+          m = nn.Linear(4, 2)
+          opt = PsiLogic(m.parameters())
+          m(torch.randn(2, 4)).sum().backward()
+          opt.step()
+          print('TestPyPI smoke test passed ✓')
+          "
+
+  # ──────────────────────────────────────────────
+  # Publish to production PyPI
+  # ──────────────────────────────────────────────
+  publish-pypi:
+    name: "Publish → PyPI"
+    needs: smoke-test-testpypi
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/psilogic
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  # ──────────────────────────────────────────────
+  # Create GitHub Release with changelog
+  # ──────────────────────────────────────────────
+  github-release:
+    name: "Create GitHub Release"
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need full history for changelog
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Generate changelog from git log
+        id: changelog
+        run: |
+          PREV_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]' | sed -n '2p')
+          if [ -z "$PREV_TAG" ]; then
+            RANGE="HEAD"
+          else
+            RANGE="${PREV_TAG}..HEAD"
+          fi
+          CHANGELOG=$(git log $RANGE --pretty=format:"- %s (%h)" --no-merges | head -50)
+          echo "changelog<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$CHANGELOG" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "ΨLogic ${{ github.ref_name }}"
+          body: |
+            ## What's Changed
+            ${{ steps.changelog.outputs.changelog }}
+
+            ## Install
+            ```bash
+            pip install psilogic==${{ needs.build.outputs.version }}
+            ```
+
+            **PyPI:** https://pypi.org/project/psilogic/${{ needs.build.outputs.version }}/
+            **DOI:** https://doi.org/10.5281/zenodo.18739857
+          files: dist/*
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'rc') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') }}

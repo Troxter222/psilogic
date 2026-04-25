@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "psilogic"
-version = "0.3.0"
+version = "0.3.1"
 authors =[
   { name = "Ali (Troxter222)", email = "troxtergrif@gmail.com" },
 ]
@@ -43,3 +43,43 @@ dev =[
 
 [tool.setuptools]
 packages =["psilogic"]
+
+[tool.pytest.ini_options]
+testpaths   = ["tests"]
+addopts     = "-ra -q --tb=short"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
+]
+
+[tool.ruff]
+line-length    = 100
+target-version = "py38"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "B008",  # do not perform function call in default arguments
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["F401", "F811"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version        = "3.8"
+warn_return_any       = true
+warn_unused_configs   = true
+ignore_missing_imports = true
