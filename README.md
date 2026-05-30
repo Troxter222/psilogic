@@ -97,7 +97,7 @@ Full raw logs: [`logs.md`](logs.md)
 > ΨLogic ties AdamW within noise (−0.0008) while showing **lower variance** (±0.0039 vs ±0.0048).
 > Lion trails by a significant margin (−0.0057).
 
-#### Arena 2 — ViT-Tiny / CIFAR-100 · 15 epochs
+#### Arena 2 — ViT-Small / CIFAR-100 · 15 epochs
 
 | Optimizer | **Top-1 Accuracy** |
 |:----------|:------------------:|
@@ -112,9 +112,9 @@ Full raw logs: [`logs.md`](logs.md)
 
 | Optimizer | **Val Perplexity ↓** |
 |:----------|:-------------------:|
-| **AdamW** | **301.8 ± 2.4** |
-| ΨLogic | 321.1 ± 2.8 |
-| Lion | 445.3 ± 0.5 |
+| **AdamW** | **301.8476 ± 2.4438** |
+| ΨLogic | 321.0643 ± 2.8492 |
+| Lion | 445.2723 ± 0.5122 |
 
 > AdamW wins this arena. ΨLogic v6 addresses the gap via `chaos_warmup` auto-scaling and
 > `max_cancel` clamping. `PsiLogicGPT` preset is recommended for from-scratch training.
@@ -200,7 +200,7 @@ Full raw logs: [`logs.md`](logs.md)
 ## Discussion
 
 **Multi-Arena benchmark (v6):** ΨLogic ties AdamW on BERT/SST-2 fine-tuning and
-beats Lion handily. On ViT-Tiny/CIFAR-100, Lion wins; `vision_defaults()` in v6
+beats Lion handily. On ViT-Small/CIFAR-100, Lion wins; `vision_defaults()` in v6
 disables Quantum Decay to address the triple-decay compounding identified as the
 root cause. On GPT-2 from scratch, the new `chaos_warmup` auto-scaling and
 `max_cancel` hard clamp in v6 significantly reduce the early-phase interference
@@ -318,7 +318,7 @@ python benchmark/benchmark_v3.py
 
 ## License
 
-MIT © 2025 Ali (Troxter222)
+MIT © 2026 Ali (Troxter222)
 
 ---
 

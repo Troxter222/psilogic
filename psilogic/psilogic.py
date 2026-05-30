@@ -370,6 +370,7 @@ class PsiLogic(Optimizer):
                 st["v"]    = torch.zeros_like(p)
                 st["fast"] = torch.zeros(1, device=dev, dtype=p.dtype)
                 st["slow"] = torch.zeros(1, device=dev, dtype=p.dtype)
+                st["gn_avg"] = torch.zeros(1, device=dev, dtype=p.dtype)
 
             st["t"] += 1
             t = st["t"]
@@ -382,14 +383,18 @@ class PsiLogic(Optimizer):
             # ── Dual EMA of normalized gradient norm (chaos detector signal)
             gn = g.norm() / math.sqrt(max(g.numel(), 1))
             if t == 1:
-                st["fast"].fill_(gn.item())
-                st["slow"].fill_(gn.item())
+                st["gn_avg"].fill_(gn)
+                gn_norm = torch.ones_like(st["fast"])
+                st["fast"].fill_(1.0)
+                st["slow"].fill_(1.0)
             else:
-                st["fast"].mul_(0.9).add_(gn, alpha=0.1)
-                st["slow"].mul_(0.99).add_(gn, alpha=0.01)
+                st["gn_avg"].mul_(0.99).add_(gn, alpha=0.01)
+                gn_norm = gn / (st["gn_avg"] + eps)
+                st["fast"].mul_(0.9).add_(gn_norm, alpha=0.1)
+                st["slow"].mul_(0.99).add_(gn_norm, alpha=0.01)
 
-            slow_v = st["slow"].item()
-            fast_v = st["fast"].item()
+            slow_t = st["slow"]
+            fast_t = st["fast"]
 
             # ── Optional cosine decay schedule for gamma and QD coefficient
             if T_max > 0:
@@ -405,44 +410,38 @@ class PsiLogic(Optimizer):
             #            absolute norm. Works for any model size.
             # BUG-C fix: hard warmup window + c_coeff clamp.
             chaos_active  = (t > warmup)
-            chaos_contrib = 0.0
-            qd_contrib    = 0.0
 
             if chaos_active and g_eff > 0:
                 if adapt_tau:
                     # Spike detection: fast > tau_scale × slow
-                    spike = (fast_v > tau_scale * slow_v + eps)
+                    spike_mask = (fast_t > tau_scale * slow_t + eps).to(p.dtype)
                 else:
-                    spike = (slow_v >= chaos_tau)
+                    spike_mask = (slow_t >= chaos_tau).to(p.dtype)
 
-                if spike:
-                    ratio = fast_v / (slow_v + eps)
-                    chaos = math.tanh(slow_v) * (
-                        1.0 + 0.5 * math.tanh(max(ratio - 1.0, 0.0))
-                    )
-                    # BUG-A fix: chaos_contrib feeds into unified single-pass decay
-                    raw_cc = chaos * lr * g_eff * p_ext
-                    # BUG-C fix: hard clamp — never shrink more than max_cancel per step
-                    chaos_contrib = min(raw_cc, max_cancel)
+                ratio = fast_t / (slow_t + eps)
+                chaos = torch.tanh(slow_t) * (
+                    1.0 + 0.5 * torch.tanh(torch.clamp(ratio - 1.0, min=0.0))
+                )
+                # BUG-A fix: chaos_contrib feeds into unified single-pass decay
+                raw_cc = chaos * lr * g_eff * p_ext
+                # BUG-C fix: hard clamp — never shrink more than max_cancel per step
+                chaos_contrib = torch.clamp(raw_cc, max=max_cancel) * spike_mask
 
-                    # BUG-D fix: QD is mutually exclusive with Active Cancellation
-                    # When chaos fires, QD is skipped this step to avoid compounding.
-                else:
-                    # Chaos did not fire — allow QD as an independent regularizer
-                    if qd_eff > 0:
-                        qd_contrib = None  # Sentinel: handle element-wise below
-
-            # ── Unified single-pass decay (BUG-A fix)
-            # Weight decay and chaos are collapsed into one mul_ to prevent
-            # compounding when both are large.
-            total_scalar_decay = lr * wd + chaos_contrib
-            if total_scalar_decay > 0:
+                # ── Unified single-pass decay (BUG-A fix)
+                # Weight decay and chaos are collapsed into one mul_ to prevent
+                # compounding when both are large.
+                total_scalar_decay = lr * wd + chaos_contrib
                 p.mul_(1.0 - total_scalar_decay)
 
-            # QD: element-wise, applied only when chaos did NOT fire this step
-            if qd_contrib is None and qd_eff > 0:
-                # BUG-D fix: reads raw_g (before GC) to avoid gradient-direction bias
-                p.mul_(1.0 - lr * qd_eff * torch.tanh(raw_g.abs()))
+                # BUG-D fix: QD is mutually exclusive with Active Cancellation
+                # When chaos fires, QD is skipped this step to avoid compounding.
+                if qd_eff > 0:
+                    qd_contrib = qd_eff * (1.0 - spike_mask)
+                    # BUG-D fix: reads raw_g (before GC) to avoid gradient-direction bias
+                    p.mul_(1.0 - lr * qd_contrib * torch.tanh(raw_g.abs()))
+            else:
+                if wd > 0:
+                    p.mul_(1.0 - lr * wd)
 
             # ── Parameter update
             if lion:
@@ -514,7 +513,7 @@ class PsiLogic(Optimizer):
                     grads[i] = g - g.mean(dim=tuple(range(1, g.dim())), keepdim=True)
 
         # ── State initialization and step counter
-        ms, vs, fasts, slows, ts = [], [], [], [], []
+        ms, vs, fasts, slows, gn_avgs, ts = [], [], [], [], [], []
         for p, g in zip(params_with_grad, grads):
             st = self.state[p]
             if not st:
@@ -523,11 +522,13 @@ class PsiLogic(Optimizer):
                 st["v"]    = torch.zeros_like(p)
                 st["fast"] = torch.zeros(1, device=p.device, dtype=p.dtype)
                 st["slow"] = torch.zeros(1, device=p.device, dtype=p.dtype)
+                st["gn_avg"] = torch.zeros(1, device=p.device, dtype=p.dtype)
             st["t"] += 1
             ms.append(st["m"])
             vs.append(st["v"])
             fasts.append(st["fast"])
             slows.append(st["slow"])
+            gn_avgs.append(st["gn_avg"])
             ts.append(st["t"])
 
         t = ts[0]  # All params in a group share the same step counter
@@ -541,15 +542,18 @@ class PsiLogic(Optimizer):
 
         # ── Dual EMA of normalized gradient norm
         g_norms = torch._foreach_norm(grads)
-        for i, (gn, fast, slow) in enumerate(zip(g_norms, fasts, slows)):
+        for i, (gn, fast, slow, gn_avg) in enumerate(zip(g_norms, fasts, slows, gn_avgs)):
             numel = grads[i].numel()
             gn_s  = gn / math.sqrt(max(numel, 1))
             if t == 1:
-                fast.fill_(gn_s.item())
-                slow.fill_(gn_s.item())
+                gn_avg.fill_(gn_s)
+                fast.fill_(1.0)
+                slow.fill_(1.0)
             else:
-                fast.mul_(0.9).add_(gn_s, alpha=0.1)
-                slow.mul_(0.99).add_(gn_s, alpha=0.01)
+                gn_avg.mul_(0.99).add_(gn_s, alpha=0.01)
+                gn_norm = gn_s / (gn_avg + eps)
+                fast.mul_(0.9).add_(gn_norm, alpha=0.1)
+                slow.mul_(0.99).add_(gn_norm, alpha=0.01)
 
         # ── Optional cosine decay schedule
         if T_max > 0:
@@ -565,30 +569,29 @@ class PsiLogic(Optimizer):
 
         if chaos_active and g_eff > 0:
             for i, (p, raw_g) in enumerate(zip(params_with_grad, raw_grads)):
-                slow_v = slows[i].item()
-                fast_v = fasts[i].item()
+                slow_t = slows[i]
+                fast_t = fasts[i]
 
                 if adapt_tau:
-                    spike = fast_v > tau_scale * slow_v + eps
+                    spike_mask = (fast_t > tau_scale * slow_t + eps).to(p.dtype)
                 else:
-                    spike = slow_v >= group["chaos_tau"]
+                    spike_mask = (slow_t >= group["chaos_tau"]).to(p.dtype)
 
-                chaos_contrib = 0.0
-                if spike:
-                    ratio         = fast_v / (slow_v + eps)
-                    chaos         = math.tanh(slow_v) * (
-                        1.0 + 0.5 * math.tanh(max(ratio - 1.0, 0.0)))
-                    chaos_contrib = min(chaos * lr * g_eff * p_ext, max_cancel)
-                    # Mutual exclusion: QD does not apply when chaos fires
-                    total_decay   = lr * wd + chaos_contrib
-                    p.mul_(1.0 - total_decay)
-                else:
-                    # Chaos did not fire — apply weight decay only
-                    if wd > 0:
-                        p.mul_(1.0 - lr * wd)
-                    # QD fires only when chaos did not (mutual exclusion)
-                    if qd_eff > 0:
-                        p.mul_(1.0 - lr * qd_eff * torch.tanh(raw_g.abs()))
+                ratio = fast_t / (slow_t + eps)
+                chaos = torch.tanh(slow_t) * (
+                    1.0 + 0.5 * torch.tanh(torch.clamp(ratio - 1.0, min=0.0)))
+                
+                raw_cc = chaos * lr * g_eff * p_ext
+                chaos_contrib = torch.clamp(raw_cc, max=max_cancel) * spike_mask
+                
+                # Mutual exclusion: QD does not apply when chaos fires
+                total_decay = lr * wd + chaos_contrib
+                p.mul_(1.0 - total_decay)
+                
+                # QD fires only when chaos did not (mutual exclusion)
+                if qd_eff > 0:
+                    qd_contrib = qd_eff * (1.0 - spike_mask)
+                    p.mul_(1.0 - lr * qd_contrib * torch.tanh(raw_g.abs()))
         else:
             # Chaos not active: apply weight decay via batched op
             if wd > 0:
