@@ -217,8 +217,8 @@ class TestChaosGating:
         y = torch.randint(0, 2, (4,))
         crit = nn.CrossEntropyLoss()
 
-        opt_psi  = PsiLogic(model_psi.parameters(),  lr=1e-2, chaos_warmup=10_000)
-        opt_adam = torch.optim.AdamW(model_adam.parameters(), lr=1e-2)
+        opt_psi  = PsiLogic(model_psi.parameters(),  lr=1e-2, chaos_warmup=10_000, grad_centralize=False, agc_clip=0.0)
+        opt_adam = torch.optim.AdamW(model_adam.parameters(), lr=1e-2, weight_decay=1e-4)
 
         for _ in range(5):
             for m, opt in [(model_psi, opt_psi), (model_adam, opt_adam)]:
