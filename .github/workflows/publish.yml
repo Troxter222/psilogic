@@ -6,6 +6,7 @@ on:
       - "v*.*.*"
 
 permissions:
+  id-token: write
   contents: write   # needed for GitHub Release creation
 
 jobs:
