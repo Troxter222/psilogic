@@ -1,5 +1,0 @@
-torch>=1.9.0
-
-[dev]
-pytest>=7.0
-torchvision>=0.10

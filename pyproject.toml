@@ -1,11 +1,11 @@
 [build-system]
-requires =["setuptools>=61.0"]
+requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "psilogic"
 version = "0.3.2"
-authors =[
+authors = [
   { name = "Ali (Troxter222)", email = "troxtergrif@gmail.com" },
 ]
 description = "PsiLogic: Active Cancellation Optimizer for Deep Neural Networks"
@@ -13,7 +13,7 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.8"
 keywords = ["optimizer", "deep learning", "pytorch", "machine learning", "neural networks"]
-classifiers =[
+classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
@@ -25,24 +25,26 @@ classifiers =[
     "Programming Language :: Python :: 3.12",
     "Operating System :: OS Independent",
 ]
-dependencies =[
+dependencies = [
     "torch>=1.9.0",
 ]
 
 [project.optional-dependencies]
-dev =[
+dev = [
     "pytest>=7.0",
     "torchvision>=0.10",
 ]
-[project.urls]
 
+[project.urls]
 "Homepage"    = "https://github.com/Troxter222/psilogic"
 "Paper"       = "https://doi.org/10.5281/zenodo.18739857"
 "Bug Tracker" = "https://github.com/Troxter222/psilogic/issues"
 "Source"      = "https://github.com/Troxter222/psilogic"
 
-[tool.setuptools]
-packages =["psilogic"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["psilogic*"]
+exclude = ["tests*", "benchmark*", "dist*", "*.egg-info*"]
 
 [tool.pytest.ini_options]
 testpaths   = ["tests"]
@@ -79,7 +81,7 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.mypy]
-python_version        = "3.8"
-warn_return_any       = true
-warn_unused_configs   = true
+python_version         = "3.8"
+warn_return_any        = true
+warn_unused_configs    = true
 ignore_missing_imports = true
