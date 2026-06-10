@@ -10,7 +10,7 @@ authors = [
 ]
 description = "PsiLogic: Active Cancellation Optimizer for Deep Neural Networks"
 readme = "README.md"
-license = "MIT"
+license = { text = "MIT" }
 requires-python = ">=3.8"
 keywords = ["optimizer", "deep learning", "pytorch", "machine learning", "neural networks"]
 classifiers = [
@@ -32,8 +32,12 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
+    "ruff>=0.4",
     "torchvision>=0.10",
 ]
+
+[tool.setuptools.package-data]
+psilogic = ["py.typed"]
 
 [project.urls]
 "Homepage"    = "https://github.com/Troxter222/psilogic"
@@ -49,6 +53,10 @@ exclude = ["tests*", "benchmark*", "dist*", "*.egg-info*"]
 [tool.pytest.ini_options]
 testpaths   = ["tests"]
 addopts     = "-ra -q --tb=short"
+markers = [
+    "gpu: requires a CUDA device",
+    "multi_gpu: requires two or more CUDA devices",
+]
 filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::UserWarning",
@@ -71,10 +79,12 @@ select = [
 ignore = [
     "E501",  # line too long (handled by formatter)
     "B008",  # do not perform function call in default arguments
+    "UP045", # X | None requires Python 3.10+
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["F401", "F811"]
+"tests/*" = ["F401", "F811", "B007", "B011"]
+"benchmark/*" = ["E702", "B007", "F401", "C408"]
 
 [tool.ruff.format]
 quote-style = "double"
