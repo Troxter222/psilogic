@@ -1319,8 +1319,8 @@ BENCHMARK_CONFIG = dict(
     compile_model = False,                     # torch.compile (experimental)
     profile    = False,                        # torch profiler
     output_dir = Path("./results"),
-    tg_token   = "8702196611:AAGeRi9KvLKnTKjEjX30Vk4pyKjBcvrQ8i8",
-    tg_chat    = "1386910692",
+    tg_token   = "",
+    tg_chat    = "",
 )
 
 
