@@ -28,9 +28,9 @@ jobs:
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install -e ".[dev]"
 
-      - name: Run tests (CPU-safe subset)
+      - name: Run tests (CPU-safe; GPU tests auto-skipped)
         run: |
-          pytest tests/test_psilogic.py -v --tb=short
+          pytest tests/ -v --tb=short
 
   # ── 2. Build wheel + sdist ───────────────────────────────────────────────
   build:
