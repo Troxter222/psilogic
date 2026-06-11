@@ -16,6 +16,8 @@ Tests cover:
   - chaos_warmup behaviour
 """
 
+from __future__ import annotations
+
 import copy
 import io
 
@@ -33,84 +35,49 @@ from psilogic import (
     nlp_param_groups,
     vision_defaults,
 )
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Fixtures
-# ─────────────────────────────────────────────────────────────────────────────
-
-@pytest.fixture
-def simple_model():
-    torch.manual_seed(0)
-    return nn.Linear(16, 4)
-
-
-@pytest.fixture
-def simple_data():
-    torch.manual_seed(1)
-    x = torch.randn(8, 16)
-    y = torch.randint(0, 4, (8,))
-    return x, y
-
-
-@pytest.fixture
-def criterion():
-    return nn.CrossEntropyLoss()
-
-
-def _run_steps(model, optimizer, x, y, criterion, n=10):
-    """Helper: run N gradient steps and return (initial_loss, final_loss)."""
-    with torch.no_grad():
-        initial_loss = criterion(model(x), y).item()
-    for _ in range(n):
-        optimizer.zero_grad()
-        loss = criterion(model(x), y)
-        loss.backward()
-        optimizer.step()
-    final_loss = criterion(model(x), y).item()
-    return initial_loss, final_loss
-
+from tests.helpers import run_steps
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. Core convergence
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestConvergence:
     def test_loss_decreases(self, simple_model, simple_data, criterion):
         x, y = simple_data
         opt = PsiLogic(simple_model.parameters(), lr=1e-2)
-        init, final = _run_steps(simple_model, opt, x, y, criterion)
+        init, final = run_steps(simple_model, opt, x, y, criterion)
         assert final < init, f"Loss did not decrease: {init:.4f} → {final:.4f}"
 
     def test_loss_decreases_nlp(self, simple_model, simple_data, criterion):
         x, y = simple_data
         opt = PsiLogicNLP(simple_model.parameters(), lr=1e-2)
-        init, final = _run_steps(simple_model, opt, x, y, criterion)
+        init, final = run_steps(simple_model, opt, x, y, criterion)
         assert final < init
 
     def test_loss_decreases_gpt(self, simple_model, simple_data, criterion):
         x, y = simple_data
         opt = PsiLogicGPT(simple_model.parameters(), lr=1e-2)
-        init, final = _run_steps(simple_model, opt, x, y, criterion)
+        init, final = run_steps(simple_model, opt, x, y, criterion)
         assert final < init
 
     def test_loss_decreases_vit(self, simple_model, simple_data, criterion):
         x, y = simple_data
         opt = PsiLogicViT(simple_model.parameters(), lr=1e-2)
-        init, final = _run_steps(simple_model, opt, x, y, criterion)
+        init, final = run_steps(simple_model, opt, x, y, criterion)
         assert final < init
 
     def test_loss_decreases_no_weight_decay(self, simple_model, simple_data, criterion):
         x, y = simple_data
         opt = PsiLogic(simple_model.parameters(), lr=1e-2, weight_decay=0.0)
-        init, final = _run_steps(simple_model, opt, x, y, criterion)
+        init, final = run_steps(simple_model, opt, x, y, criterion)
         assert final < init
 
     def test_loss_decreases_gamma_zero(self, simple_model, simple_data, criterion):
         """With gamma=0 PsiLogic degrades to AdamW — must still converge."""
         x, y = simple_data
         opt = PsiLogic(simple_model.parameters(), lr=1e-2, gamma=0.0)
-        init, final = _run_steps(simple_model, opt, x, y, criterion)
+        init, final = run_steps(simple_model, opt, x, y, criterion)
         assert final < init
 
 
@@ -118,11 +85,20 @@ class TestConvergence:
 # 2. Parameter groups / preset helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestPresets:
     def test_nlp_defaults_keys(self):
         d = nlp_defaults(total_steps=1000)
-        required = {"betas", "weight_decay", "gamma", "adaptive_tau",
-                    "tau_scale", "max_cancel", "gamma_T_max", "use_foreach"}
+        required = {
+            "betas",
+            "weight_decay",
+            "gamma",
+            "adaptive_tau",
+            "tau_scale",
+            "max_cancel",
+            "gamma_T_max",
+            "use_foreach",
+        }
         assert required.issubset(d.keys())
         assert d["gamma_T_max"] == 1000
 
@@ -161,18 +137,22 @@ class TestPresets:
 # 3. Hyperparameter validation
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestValidation:
-    @pytest.mark.parametrize("bad_kwargs,match", [
-        ({"lr": -1e-3},          "lr"),
-        ({"weight_decay": -0.1}, "weight_decay"),
-        ({"gamma": -0.1},        "gamma"),
-        ({"quantum_decay": -1},  "quantum_decay"),
-        ({"agc_clip": -0.1},     "agc_clip"),
-        ({"max_cancel": 0.0},    "max_cancel"),
-        ({"max_cancel": 1.1},    "max_cancel"),
-        ({"betas": (1.0, 0.99)}, "beta1"),
-        ({"betas": (0.9, -0.1)}, "beta2"),
-    ])
+    @pytest.mark.parametrize(
+        "bad_kwargs,match",
+        [
+            ({"lr": -1e-3}, "lr"),
+            ({"weight_decay": -0.1}, "weight_decay"),
+            ({"gamma": -0.1}, "gamma"),
+            ({"quantum_decay": -1}, "quantum_decay"),
+            ({"agc_clip": -0.1}, "agc_clip"),
+            ({"max_cancel": 0.0}, "max_cancel"),
+            ({"max_cancel": 1.1}, "max_cancel"),
+            ({"betas": (1.0, 0.99)}, "beta1"),
+            ({"betas": (0.9, -0.1)}, "beta2"),
+        ],
+    )
     def test_invalid_hparam_raises(self, bad_kwargs, match):
         model = nn.Linear(4, 2)
         with pytest.raises((AssertionError, ValueError)):
@@ -182,6 +162,7 @@ class TestValidation:
 # ─────────────────────────────────────────────────────────────────────────────
 # 4. Chaos gating modes
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestChaosGating:
     def test_adaptive_tau_mode(self, simple_model, simple_data, criterion):
@@ -193,7 +174,7 @@ class TestChaosGating:
             tau_scale=2.0,
             chaos_warmup=0,
         )
-        init, final = _run_steps(simple_model, opt, x, y, criterion)
+        init, final = run_steps(simple_model, opt, x, y, criterion)
         assert final < init
 
     def test_absolute_tau_mode(self, simple_model, simple_data, criterion):
@@ -202,22 +183,28 @@ class TestChaosGating:
             simple_model.parameters(),
             lr=1e-2,
             adaptive_tau=False,
-            chaos_tau=0.01,   # very low — will trigger often
+            chaos_tau=0.01,  # very low — will trigger often
             chaos_warmup=0,
         )
-        init, final = _run_steps(simple_model, opt, x, y, criterion)
+        init, final = run_steps(simple_model, opt, x, y, criterion)
         assert final < init
 
     def test_chaos_warmup_delays_activation(self):
         """Optimizer with a very long warmup should behave like plain AdamW early on."""
         torch.manual_seed(42)
-        model_psi  = nn.Linear(8, 2)
+        model_psi = nn.Linear(8, 2)
         model_adam = copy.deepcopy(model_psi)
         x = torch.randn(4, 8)
         y = torch.randint(0, 2, (4,))
         crit = nn.CrossEntropyLoss()
 
-        opt_psi  = PsiLogic(model_psi.parameters(),  lr=1e-2, chaos_warmup=10_000, grad_centralize=False, agc_clip=0.0)
+        opt_psi = PsiLogic(
+            model_psi.parameters(),
+            lr=1e-2,
+            chaos_warmup=10_000,
+            grad_centralize=False,
+            agc_clip=0.0,
+        )
         opt_adam = torch.optim.AdamW(model_adam.parameters(), lr=1e-2, weight_decay=1e-4)
 
         for _ in range(5):
@@ -228,13 +215,15 @@ class TestChaosGating:
 
         # With warmup=10000 and only 5 steps, params should be very close
         for p_psi, p_adam in zip(model_psi.parameters(), model_adam.parameters()):
-            assert torch.allclose(p_psi, p_adam, atol=1e-4), \
+            assert torch.allclose(p_psi, p_adam, atol=1e-4), (
                 "During warmup, PsiLogic should match AdamW closely"
+            )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 5. Cosine gamma decay
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestGammaDecay:
     def test_gamma_t_max_converges(self, simple_model, simple_data, criterion):
@@ -244,13 +233,14 @@ class TestGammaDecay:
             lr=1e-2,
             gamma_T_max=50,
         )
-        init, final = _run_steps(simple_model, opt, x, y, criterion, n=20)
+        init, final = run_steps(simple_model, opt, x, y, criterion, n=20)
         assert final < init
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 6. Edge cases
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestEdgeCases:
     def test_zero_grad_no_crash(self):
@@ -304,13 +294,13 @@ class TestEdgeCases:
     def test_no_grad_centralize(self, simple_model, simple_data, criterion):
         x, y = simple_data
         opt = PsiLogic(simple_model.parameters(), lr=1e-2, grad_centralize=False)
-        init, final = _run_steps(simple_model, opt, x, y, criterion)
+        init, final = run_steps(simple_model, opt, x, y, criterion)
         assert final < init
 
     def test_agc_disabled(self, simple_model, simple_data, criterion):
         x, y = simple_data
         opt = PsiLogic(simple_model.parameters(), lr=1e-2, agc_clip=0.0)
-        init, final = _run_steps(simple_model, opt, x, y, criterion)
+        init, final = run_steps(simple_model, opt, x, y, criterion)
         assert final < init
 
 
@@ -318,17 +308,19 @@ class TestEdgeCases:
 # 7. Lion mode
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestLionMode:
     def test_lion_mode_converges(self, simple_model, simple_data, criterion):
         x, y = simple_data
         opt = PsiLogic(simple_model.parameters(), lr=1e-3, lion_mode=True)
-        init, final = _run_steps(simple_model, opt, x, y, criterion)
+        init, final = run_steps(simple_model, opt, x, y, criterion)
         assert final < init
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 8. State serialization
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestCheckpoint:
     def test_state_dict_round_trip(self, simple_model, simple_data, criterion):
@@ -344,14 +336,17 @@ class TestCheckpoint:
 
         # Save
         buf = io.BytesIO()
-        torch.save({
-            "model": simple_model.state_dict(),
-            "optimizer": opt.state_dict(),
-        }, buf)
+        torch.save(
+            {
+                "model": simple_model.state_dict(),
+                "optimizer": opt.state_dict(),
+            },
+            buf,
+        )
 
         # Restore into fresh copies
         model2 = nn.Linear(16, 4)
-        opt2   = PsiLogic(model2.parameters(), lr=1e-2)
+        opt2 = PsiLogic(model2.parameters(), lr=1e-2)
         buf.seek(0)
         ckpt = torch.load(buf, weights_only=False)
         model2.load_state_dict(ckpt["model"])
@@ -367,8 +362,7 @@ class TestCheckpoint:
         opt2.step()
 
         for p1, p2 in zip(simple_model.parameters(), model2.parameters()):
-            assert torch.allclose(p1, p2, atol=1e-6), \
-                "Params diverged after checkpoint round-trip"
+            assert torch.allclose(p1, p2, atol=1e-6), "Params diverged after checkpoint round-trip"
 
     def test_state_dict_has_expected_keys(self, simple_model, simple_data, criterion):
         x, y = simple_data
@@ -390,13 +384,14 @@ class TestCheckpoint:
 # 9. Determinism
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestDeterminism:
     def test_identical_seeds_identical_loss(self, simple_data, criterion):
         x, y = simple_data
 
         def run():
             torch.manual_seed(7)
-            m   = nn.Linear(16, 4)
+            m = nn.Linear(16, 4)
             opt = PsiLogic(m.parameters(), lr=1e-2)
             losses = []
             for _ in range(5):
@@ -414,9 +409,11 @@ class TestDeterminism:
 # 10. Import and version
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestPackage:
     def test_version_string(self):
         import psilogic
+
         assert hasattr(psilogic, "__version__")
         parts = psilogic.__version__.split(".")
         assert len(parts) == 3
