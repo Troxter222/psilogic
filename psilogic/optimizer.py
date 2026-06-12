@@ -8,17 +8,27 @@ unstable early training and decays automatically at convergence.
 from __future__ import annotations
 
 import math
+import time
 from typing import Any, Iterable, Optional
 
 import torch
+import torch.distributed as dist
+import torch.nn as nn
 from torch.optim.optimizer import Optimizer
 
 from ._chaos import (
+    auto_gamma,
     chaos_contribution,
     effective_gamma_and_qd,
-    resolve_warmup,
+    effective_warmup,
     update_gradient_norm_ema,
 )
+
+_STATE_DICT_SCHEMA_KEY = "psilogic_schema"
+_STATE_DICT_SCHEMA_VERSION = 2
+
+_FOREACH_OPS = ("mul_", "add_", "addcmul_", "sqrt", "addcdiv_", "norm")
+_FOREACH_AVAILABLE = all(hasattr(torch, f"_foreach_{op}") for op in _FOREACH_OPS)
 
 
 def _validate_hyperparameters(
@@ -30,14 +40,22 @@ def _validate_hyperparameters(
     agc_clip: float,
     max_cancel: float,
 ) -> None:
-    assert lr >= 0, f"Invalid lr: {lr}"
-    assert weight_decay >= 0, f"Invalid weight_decay: {weight_decay}"
-    assert gamma >= 0, f"Invalid gamma: {gamma}"
-    assert quantum_decay >= 0, f"Invalid quantum_decay: {quantum_decay}"
-    assert 0 <= betas[0] < 1, f"Invalid beta1: {betas[0]}"
-    assert 0 <= betas[1] < 1, f"Invalid beta2: {betas[1]}"
-    assert agc_clip >= 0, f"Invalid agc_clip: {agc_clip}"
-    assert 0 < max_cancel <= 1, f"Invalid max_cancel: {max_cancel}"
+    if lr < 0:
+        raise ValueError(f"Invalid lr: {lr} (must be >= 0)")
+    if weight_decay < 0:
+        raise ValueError(f"Invalid weight_decay: {weight_decay} (must be >= 0)")
+    if gamma < 0:
+        raise ValueError(f"Invalid gamma: {gamma} (must be >= 0)")
+    if quantum_decay < 0:
+        raise ValueError(f"Invalid quantum_decay: {quantum_decay} (must be >= 0)")
+    if not 0 <= betas[0] < 1:
+        raise ValueError(f"Invalid beta1: {betas[0]} (must be in [0, 1))")
+    if not 0 <= betas[1] < 1:
+        raise ValueError(f"Invalid beta2: {betas[1]} (must be in [0, 1))")
+    if agc_clip < 0:
+        raise ValueError(f"Invalid agc_clip: {agc_clip} (must be >= 0)")
+    if not 0 < max_cancel <= 1:
+        raise ValueError(f"Invalid max_cancel: {max_cancel} (must be in (0, 1])")
 
 
 def _apply_agc(grad: torch.Tensor, param: torch.Tensor, agc: float) -> torch.Tensor:
@@ -47,7 +65,8 @@ def _apply_agc(grad: torch.Tensor, param: torch.Tensor, agc: float) -> torch.Ten
     g_norm = grad.norm()
     max_norm = agc * p_norm.clamp(min=1e-3)
     clip_cf = (max_norm / g_norm.clamp(min=1e-6)).clamp(max=1.0)
-    return grad * clip_cf
+    out: torch.Tensor = grad * clip_cf
+    return out
 
 
 def _centralize_grad(grad: torch.Tensor) -> torch.Tensor:
@@ -73,6 +92,10 @@ class PsiLogic(Optimizer):
     modulates per-step parameter shrinkage. See the project README for the
     full mathematical description.
 
+    All chaos hyperparameters are valid per param-group overrides, including
+    ``lion_mode`` — e.g. ViT transformer blocks can run Lion updates while
+    patch embeddings stay on Adam (see ``vit_param_groups(lion_blocks=True)``).
+
     Args:
         params: Iterable of parameters or parameter groups.
         lr: Learning rate. Default: ``1e-3``.
@@ -84,14 +107,25 @@ class PsiLogic(Optimizer):
         eps: Numerical stability epsilon. Default: ``1e-8``.
         grad_centralize: Subtract spatial mean from gradients. Default: ``True``.
         chaos_tau: Absolute slow-EMA threshold when ``adaptive_tau=False``.
-        chaos_warmup: Warmup steps before chaos activates; ``-1`` auto-scales.
+        chaos_warmup: Warmup steps before chaos activates; ``-1`` auto-scales
+            to ``max(500, gamma_T_max // 20)``. Chaos then ramps in linearly
+            over a quarter of the warmup window instead of switching on hard.
         adaptive_tau: Gate chaos on fast/slow ratio instead of absolute norm.
         tau_scale: Required fast/slow ratio in adaptive mode. Default: ``2.0``.
         max_cancel: Hard cap on per-step fractional shrinkage. Default: ``0.05``.
         agc_clip: Adaptive gradient clipping ratio; ``0.0`` disables.
         gamma_T_max: Total steps for cosine γ schedule; ``0`` disables.
-        use_foreach: Batched CUDA ops via ``torch._foreach_*``. Default: ``True``.
+        use_foreach: Batched CUDA ops via ``torch._foreach_*``. Falls back to
+            the scalar path automatically when foreach ops are unavailable.
         lion_mode: Sign-momentum (Lion) update instead of Adam. Default: ``False``.
+        gamma_auto: Auto-reduce γ when the slow EMA signals convergence
+            (``slow < 0.1``). Default: ``False``.
+        sync_chaos_ddp: All-reduce (mean) the fast/slow chaos signals across
+            DDP ranks before applying cancellation, so every rank damps
+            identically. No-op outside an initialized process group.
+        profile_step_time: Record wall-clock ``step()`` duration in
+            ``self.last_step_time_ms`` and an EMA in ``self.step_time_ms_ema``.
+            Timing is host-side and approximate under CUDA async execution.
     """
 
     def __init__(
@@ -114,6 +148,9 @@ class PsiLogic(Optimizer):
         gamma_T_max: int = 0,
         use_foreach: bool = True,
         lion_mode: bool = False,
+        gamma_auto: bool = False,
+        sync_chaos_ddp: bool = False,
+        profile_step_time: bool = False,
     ) -> None:
         _validate_hyperparameters(
             lr, weight_decay, gamma, quantum_decay, betas, agc_clip, max_cancel
@@ -137,8 +174,113 @@ class PsiLogic(Optimizer):
             "gamma_T_max": gamma_T_max,
             "use_foreach": use_foreach,
             "lion_mode": lion_mode,
+            "gamma_auto": gamma_auto,
         }
         super().__init__(params, defaults)
+
+        self._sync_chaos_ddp = bool(sync_chaos_ddp)
+        self._profile_step_time = bool(profile_step_time)
+        self.last_step_time_ms: float = 0.0
+        self.step_time_ms_ema: Optional[float] = None
+
+    # ------------------------------------------------------------------ #
+    # Zero-config construction
+    # ------------------------------------------------------------------ #
+
+    @classmethod
+    def auto(
+        cls,
+        model: nn.Module,
+        lr: Optional[float] = None,
+        total_steps: int = 0,
+        **overrides: Any,
+    ) -> PsiLogic:
+        """Zero-config constructor: infer preset and param groups from ``model``.
+
+        Architecture is detected from module types and parameter names
+        (ViT / GPT / NLP encoder / CNN / generic) and the matching preset and
+        parameter-group builder are applied automatically::
+
+            optimizer = PsiLogic.auto(model, total_steps=len(loader) * epochs)
+        """
+        from .convenience import build_auto_optimizer
+
+        return build_auto_optimizer(cls, model, lr=lr, total_steps=total_steps, **overrides)
+
+    # ------------------------------------------------------------------ #
+    # Checkpointing (schema v2 with v0.3-monolith migration)
+    # ------------------------------------------------------------------ #
+
+    def state_dict(self) -> dict[str, Any]:
+        """Return the optimizer state tagged with the PsiLogic schema version."""
+        sd = super().state_dict()
+        sd[_STATE_DICT_SCHEMA_KEY] = _STATE_DICT_SCHEMA_VERSION
+        return sd
+
+    def load_state_dict(self, state_dict: dict[str, Any]) -> None:
+        """Load optimizer state, migrating pre-v0.4 (schema v1) checkpoints.
+
+        v1 checkpoints (the v0.3 monolith) lack newer per-group keys such as
+        ``gamma_auto``; those are filled from the current defaults. Missing
+        chaos-state tensors are re-initialized to a neutral value — the EMAs
+        renormalize within a handful of steps and shrinkage stays bounded by
+        ``max_cancel`` throughout.
+        """
+        state_dict = dict(state_dict)
+        schema = state_dict.pop(_STATE_DICT_SCHEMA_KEY, 1)
+        if schema > _STATE_DICT_SCHEMA_VERSION:
+            raise ValueError(
+                f"Checkpoint uses PsiLogic state_dict schema v{schema}, but this "
+                f"version only supports up to v{_STATE_DICT_SCHEMA_VERSION}. "
+                "Please upgrade the psilogic package."
+            )
+        if schema < _STATE_DICT_SCHEMA_VERSION:
+            state_dict = self._migrate_state_dict(state_dict)
+        super().load_state_dict(state_dict)
+        self._fill_missing_state()
+
+    def _migrate_state_dict(self, state_dict: dict[str, Any]) -> dict[str, Any]:
+        migrated = {
+            "state": {key: dict(value) for key, value in state_dict["state"].items()},
+            "param_groups": [dict(group) for group in state_dict["param_groups"]],
+        }
+        for group in migrated["param_groups"]:
+            for key, value in self.defaults.items():
+                group.setdefault(key, value)
+        return migrated
+
+    def _fill_missing_state(self) -> None:
+        for group in self.param_groups:
+            for param in group["params"]:
+                state = self.state.get(param)
+                if not state:
+                    continue
+                if "gn_avg" not in state:
+                    state["gn_avg"] = torch.zeros(1, device=param.device, dtype=param.dtype)
+                for key in ("fast", "slow"):
+                    if key not in state:
+                        state[key] = torch.ones(1, device=param.device, dtype=param.dtype)
+
+    # ------------------------------------------------------------------ #
+    # DDP chaos synchronization
+    # ------------------------------------------------------------------ #
+
+    def _maybe_sync_chaos(self, states: list[dict[str, Any]]) -> None:
+        """All-reduce (mean) fast/slow chaos EMAs across DDP ranks in-place."""
+        if not self._sync_chaos_ddp or not states:
+            return
+        if not (dist.is_available() and dist.is_initialized()):
+            return
+        flat = torch.cat([torch.cat((state["fast"], state["slow"])).float() for state in states])
+        dist.all_reduce(flat, op=dist.ReduceOp.SUM)
+        flat.div_(dist.get_world_size())
+        for i, state in enumerate(states):
+            state["fast"].copy_(flat[2 * i])
+            state["slow"].copy_(flat[2 * i + 1])
+
+    # ------------------------------------------------------------------ #
+    # Update math
+    # ------------------------------------------------------------------ #
 
     def _apply_unified_decay(
         self,
@@ -157,9 +299,9 @@ class PsiLogic(Optimizer):
         chaos_tau: float,
         tau_scale: float,
         eps: float,
-        chaos_active: bool,
+        chaos_gain: float,
     ) -> None:
-        if chaos_active and gamma_eff > 0:
+        if chaos_gain > 0.0 and gamma_eff > 0:
             chaos_contrib, spike_mask = chaos_contribution(
                 slow_t,
                 fast_t,
@@ -173,11 +315,11 @@ class PsiLogic(Optimizer):
                 max_cancel=max_cancel,
                 param_dtype=param.dtype,
             )
-            total_scalar_decay = lr * wd + chaos_contrib
+            total_scalar_decay = lr * wd + chaos_contrib * chaos_gain
             param.mul_(1.0 - total_scalar_decay)
 
             if qd_eff > 0:
-                qd_contrib = qd_eff * (1.0 - spike_mask)
+                qd_contrib = qd_eff * chaos_gain * (1.0 - spike_mask)
                 param.mul_(1.0 - lr * qd_contrib * torch.tanh(raw_grad.abs()))
         elif wd > 0:
             param.mul_(1.0 - lr * wd)
@@ -215,13 +357,14 @@ class PsiLogic(Optimizer):
         eps = group["eps"]
         gc = group["grad_centralize"]
         chaos_tau = group["chaos_tau"]
-        warmup = resolve_warmup(group["chaos_warmup"], group["gamma_T_max"])
+        warmup_cfg = group["chaos_warmup"]
         adapt_tau = group["adaptive_tau"]
         tau_scale = group["tau_scale"]
         max_cancel = group["max_cancel"]
         agc = group["agc_clip"]
         gamma_t_max = group["gamma_T_max"]
         lion = group["lion_mode"]
+        gamma_auto_on = group["gamma_auto"]
 
         for param in group["params"]:
             if param.grad is None:
@@ -254,9 +397,12 @@ class PsiLogic(Optimizer):
                 state["gn_avg"],
                 eps,
             )
+            self._maybe_sync_chaos([state])
 
             gamma_eff, qd_eff = effective_gamma_and_qd(step, gamma_t_max, gamma, qd)
-            chaos_active = step > warmup
+            if gamma_auto_on:
+                gamma_eff = auto_gamma(state["slow"], step, gamma_eff)
+            chaos_gain = effective_warmup(step, gamma_t_max, warmup_cfg)
 
             self._apply_unified_decay(
                 param,
@@ -273,7 +419,7 @@ class PsiLogic(Optimizer):
                 chaos_tau=chaos_tau,
                 tau_scale=tau_scale,
                 eps=eps,
-                chaos_active=chaos_active,
+                chaos_gain=chaos_gain,
             )
 
             self._adam_or_lion_update(
@@ -297,13 +443,14 @@ class PsiLogic(Optimizer):
         qd = group["quantum_decay"]
         eps = group["eps"]
         gc = group["grad_centralize"]
-        warmup = resolve_warmup(group["chaos_warmup"], group["gamma_T_max"])
+        warmup_cfg = group["chaos_warmup"]
         adapt_tau = group["adaptive_tau"]
         tau_scale = group["tau_scale"]
         max_cancel = group["max_cancel"]
         agc = group["agc_clip"]
         gamma_t_max = group["gamma_T_max"]
         lion = group["lion_mode"]
+        gamma_auto_on = group["gamma_auto"]
 
         params_with_grad = [p for p in group["params"] if p.grad is not None]
         if not params_with_grad:
@@ -319,7 +466,9 @@ class PsiLogic(Optimizer):
                 for g, pn, gn in zip(grads, p_norms, g_norms)
             ]
 
-        raw_grads = [g.clone() for g in grads]
+        # Snapshot pre-centralization grads for quantum decay (no clone: the
+        # centralization below rebinds list slots without mutating tensors).
+        raw_grads = list(grads)
 
         if gc:
             for i, grad in enumerate(grads):
@@ -348,18 +497,22 @@ class PsiLogic(Optimizer):
             update_gradient_norm_ema(
                 gn, grad.numel(), step, state["fast"], state["slow"], state["gn_avg"], eps
             )
+        self._maybe_sync_chaos(states)
 
         gamma_eff, qd_eff = effective_gamma_and_qd(step, gamma_t_max, gamma, qd)
-        chaos_active = step > warmup
+        chaos_gain = effective_warmup(step, gamma_t_max, warmup_cfg)
 
-        if chaos_active and gamma_eff > 0:
+        if chaos_gain > 0.0 and gamma_eff > 0:
             for param, raw_grad, state in zip(params_with_grad, raw_grads, states):
+                gamma_param = (
+                    auto_gamma(state["slow"], step, gamma_eff) if gamma_auto_on else gamma_eff
+                )
                 self._apply_unified_decay(
                     param,
                     raw_grad,
                     lr=lr,
                     wd=wd,
-                    gamma_eff=gamma_eff,
+                    gamma_eff=gamma_param,
                     qd_eff=qd_eff,
                     p_ext=p_ext,
                     max_cancel=max_cancel,
@@ -369,7 +522,7 @@ class PsiLogic(Optimizer):
                     chaos_tau=group["chaos_tau"],
                     tau_scale=tau_scale,
                     eps=eps,
-                    chaos_active=True,
+                    chaos_gain=chaos_gain,
                 )
         elif wd > 0:
             torch._foreach_mul_(params_with_grad, 1.0 - lr * wd)
@@ -387,19 +540,31 @@ class PsiLogic(Optimizer):
             torch._foreach_addcdiv_(params_with_grad, ms, denoms, value=-step_size)
 
     @torch.no_grad()
-    def step(self, closure: Optional[Any] = None) -> Optional[torch.Tensor]:
+    def step(self, closure: Optional[Any] = None) -> Optional[torch.Tensor]:  # type: ignore[override]
         loss = None
         if closure is not None:
             with torch.enable_grad():
                 loss = closure()
 
+        t_start = time.perf_counter() if self._profile_step_time else 0.0
+
         for group in self.param_groups:
-            use_foreach = group["use_foreach"] and any(
-                p.is_cuda for p in group["params"] if p.grad is not None
+            use_foreach = (
+                group["use_foreach"]
+                and _FOREACH_AVAILABLE
+                and any(p.is_cuda for p in group["params"] if p.grad is not None)
             )
             if use_foreach:
                 self._step_foreach(group)
             else:
                 self._step_scalar(group)
+
+        if self._profile_step_time:
+            elapsed_ms = (time.perf_counter() - t_start) * 1000.0
+            self.last_step_time_ms = elapsed_ms
+            if self.step_time_ms_ema is None:
+                self.step_time_ms_ema = elapsed_ms
+            else:
+                self.step_time_ms_ema = 0.9 * self.step_time_ms_ema + 0.1 * elapsed_ms
 
         return loss
