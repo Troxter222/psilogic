@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "psilogic"
-version = "0.3.2"
+dynamic = ["version"]
 authors = [
   { name = "Ali (Troxter222)", email = "troxtergrif@gmail.com" },
 ]
@@ -33,8 +33,32 @@ dependencies = [
 dev = [
     "pytest>=7.0",
     "ruff>=0.4",
+    "mypy>=1.0",
     "torchvision>=0.10",
 ]
+integrations = [
+    "transformers>=4.30",
+    "lightning>=2.0",
+]
+benchmark = [
+    "numpy>=1.20",
+    "torchvision>=0.10",
+    "transformers>=4.30",
+    "datasets>=2.0",
+]
+all = [
+    "pytest>=7.0",
+    "ruff>=0.4",
+    "mypy>=1.0",
+    "torchvision>=0.10",
+    "transformers>=4.30",
+    "lightning>=2.0",
+    "datasets>=2.0",
+    "numpy>=1.20",
+]
+
+[tool.setuptools.dynamic]
+version = {attr = "psilogic._version.__version__"}
 
 [tool.setuptools.package-data]
 psilogic = ["py.typed"]
@@ -84,14 +108,19 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["F401", "F811", "B007", "B011"]
-"benchmark/*" = ["E702", "B007", "F401", "C408"]
+"benchmark/*" = ["E702", "B007", "F401", "C408", "E402"]
+"examples/*" = ["E402"]
 
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
 
 [tool.mypy]
-python_version         = "3.8"
+python_version         = "3.10"
 warn_return_any        = true
 warn_unused_configs    = true
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "psilogic.integrations.*"
+disable_error_code = ["override", "assignment", "dict-item", "arg-type"]
