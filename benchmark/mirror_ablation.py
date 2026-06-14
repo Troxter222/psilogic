@@ -13,6 +13,7 @@ def get_data():
     y = torch.randn(1000, 2)
     return DataLoader(TensorDataset(x, y), batch_size=32)
 
+
 def run_mirror_ablation():
     torch.manual_seed(42)
 
@@ -30,7 +31,7 @@ def run_mirror_ablation():
         chaos_tau=0.01,
         grad_centralize=False,
         agc_clip=0.0,
-        use_foreach=False # Use scalar to easily track EMA state
+        use_foreach=False,  # Use scalar to easily track EMA state
     )
     crit = nn.MSELoss()
     dl = get_data()
@@ -60,10 +61,10 @@ def run_mirror_ablation():
                     slow_t = st["slow"].item()
                     fast_t = st["fast"].item()
 
-                    if fast_t > 2.0 * slow_t + 1e-8: # tau_scale default
+                    if fast_t > 2.0 * slow_t + 1e-8:  # tau_scale default
                         ratio = fast_t / (slow_t + 1e-8)
                         chaos = math.tanh(slow_t) * (1.0 + 0.5 * math.tanh(max(ratio - 1.0, 0.0)))
-                        cc = min(chaos * group["lr"] * gamma * p_ext, 0.05) # max_cancel
+                        cc = min(chaos * group["lr"] * gamma * p_ext, 0.05)  # max_cancel
                         chaos_sum += cc
                     count += 1
             chaos_logs.append(chaos_sum / count)
@@ -115,9 +116,12 @@ def run_mirror_ablation():
     print(f"Loss difference (Psi vs Mirror): {diff:.6f}")
 
     if diff < 1e-3:
-        print("\nCONCLUSION: PsiLogic is empirically equivalent to an automatically generated AdamW weight-decay schedule.")
+        print(
+            "\nCONCLUSION: PsiLogic is empirically equivalent to an automatically generated AdamW weight-decay schedule."
+        )
     else:
         print("\nCONCLUSION: PsiLogic has effects beyond simple uniform weight-decay scheduling.")
+
 
 if __name__ == "__main__":
     run_mirror_ablation()
