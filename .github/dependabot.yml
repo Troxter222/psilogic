@@ -1,0 +1,30 @@
+version: 2
+
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      dev-and-integrations:
+        patterns:
+          - pytest
+          - ruff
+          - mypy
+          - torchvision
+          - transformers
+          - lightning
+          - datasets
+          - numpy
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
