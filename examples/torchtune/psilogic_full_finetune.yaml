@@ -1,0 +1,37 @@
+# torchtune config snippet — full fine-tune with the PsiLogic optimizer.
+#
+# torchtune instantiates the optimizer from `_component_`, so any installed
+# optimizer with a standard torch.optim signature works out of the box:
+#
+#     pip install psilogic
+#     tune run full_finetune_single_device --config examples/torchtune/psilogic_full_finetune.yaml
+#
+# Merge the `optimizer:` block below into your favourite torchtune recipe
+# config (the surrounding keys mirror the official llama3 example).
+
+optimizer:
+  _component_: psilogic.PsiLogic
+  lr: 2e-5
+  weight_decay: 0.01
+  gamma: 0.03
+  quantum_decay: 0.0002
+  chaos_warmup: -1          # auto: max(500, total_steps // 20)
+  adaptive_tau: true
+  tau_scale: 2.0
+  max_cancel: 0.05
+  agc_clip: 0.01
+  gamma_T_max: 0            # set to total training steps to enable cosine γ decay
+
+loss:
+  _component_: torch.nn.CrossEntropyLoss
+
+# Recommended pairing for from-scratch or continued pre-training instead:
+#
+# optimizer:
+#   _component_: psilogic.PsiLogic
+#   lr: 3e-4
+#   weight_decay: 0.1
+#   gamma: 0.02
+#   tau_scale: 3.0
+#   max_cancel: 0.03
+#   chaos_warmup: -1
