@@ -125,14 +125,16 @@ def psilogic_trainer_class() -> type[Any]:
             self._psilogic_kwargs = dict(psilogic_kwargs or {})
             super().__init__(*args, **kwargs)
 
-        def create_optimizer(self) -> Any:
-            if self.optimizer is None:
-                self.optimizer = create_psilogic_optimizer(
+        def create_optimizer(self) -> PsiLogic:
+            optimizer: PsiLogic | None = getattr(self, "optimizer", None)
+            if optimizer is None:
+                optimizer = create_psilogic_optimizer(
                     self.model,
                     self.args,
                     preset=self._psilogic_preset,
                     **self._psilogic_kwargs,
                 )
-            return self.optimizer
+                self.optimizer = optimizer
+            return optimizer
 
     return PsiLogicTrainer
