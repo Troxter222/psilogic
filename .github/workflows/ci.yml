@@ -28,6 +28,7 @@ jobs:
           pip install --upgrade pip
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install -e ".[dev,integrations]"
+          python -c "from transformers import Trainer; print('transformers OK')"
 
       - name: Lint
         run: ruff check psilogic tests benchmark examples

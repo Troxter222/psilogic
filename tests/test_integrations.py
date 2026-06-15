@@ -101,7 +101,11 @@ class TestLightning:
 
 
 class TestHFTrainer:
-    def test_trainer_class_requires_transformers(self):
-        transformers = pytest.importorskip("transformers")
+    def test_trainer_class_with_transformers(self):
+        pytest.importorskip("transformers")
+        try:
+            from transformers import Trainer
+        except ImportError as exc:
+            pytest.skip(f"transformers Trainer unavailable: {exc}")
         trainer_cls = psilogic_trainer_class()
-        assert issubclass(trainer_cls, transformers.Trainer)
+        assert issubclass(trainer_cls, Trainer)

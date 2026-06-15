@@ -38,6 +38,9 @@ dev = [
 ]
 integrations = [
     "transformers>=4.30",
+    "accelerate>=0.20",
+    "safetensors>=0.3",
+    "tokenizers>=0.13",
     "lightning>=2.0",
 ]
 benchmark = [
