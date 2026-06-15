@@ -5,6 +5,7 @@
 ### Active Cancellation Optimizer for Deep Neural Networks
 
 [![PyPI version](https://badge.fury.io/py/psilogic.svg)](https://badge.fury.io/py/psilogic)
+[![CI](https://github.com/Troxter222/psilogic/actions/workflows/ci.yml/badge.svg)](https://github.com/Troxter222/psilogic/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/pypi/pyversions/psilogic)](https://pypi.org/project/psilogic)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18739857.svg)](https://doi.org/10.5281/zenodo.18739857)
@@ -29,6 +30,34 @@ Tested against Adam, AdamW, Lion, and SGD across **images · text · audio · la
 
 ```bash
 pip install psilogic
+
+# Development, benchmarks, or framework integrations
+pip install -e ".[dev]"              # tests + lint
+pip install -e ".[integrations]"       # HuggingFace + Lightning
+pip install -e ".[benchmark]"          # full benchmark harness
+pip install -e ".[all]"                # everything
+```
+
+## Project Structure
+
+```
+psilogic-pkg/
+├── psilogic/                  # installable package
+│   ├── optimizer.py           # PsiLogic core optimizer
+│   ├── _chaos.py              # chaos detector, warmup, metrics
+│   ├── param_groups.py        # per-architecture param groups (NLP / ViT / GPT)
+│   ├── presets.py             # task-specific default hyperparameters
+│   ├── convenience.py         # PsiLogicNLP/GPT/ViT/Whisper + auto-config
+│   ├── debug.py               # chaos_stats, norm_history diagnostics
+│   └── integrations/          # optional HuggingFace & Lightning hooks
+├── tests/                     # pytest suite (DDP, AMP, presets, migrations)
+├── benchmark/                 # reproducible benchmark harness
+│   ├── run_benchmark.py       # unified multi-arena runner
+│   ├── run_all.py             # one-command suite orchestration
+│   └── imagenet/              # DDP ImageNet training script
+├── examples/                  # integration recipes (HF, torchtune)
+├── pyproject.toml             # packaging, ruff, pytest, mypy config
+└── CHANGELOG.md
 ```
 
 ## Drop-in Replacement
@@ -289,6 +318,34 @@ optimizer = PsiLogicGPT(model.parameters(), lr=3e-4, gamma_T_max=total_steps)
 optimizer = PsiLogicViT(model.parameters(), lr=1e-3, gamma_T_max=total_steps)
 ```
 
+### Auto-Configuration
+
+```python
+from psilogic import PsiLogic
+
+# Detects ViT / GPT / NLP / CNN from model architecture and applies matching preset
+optimizer = PsiLogic.auto(model, total_steps=len(loader) * epochs)
+```
+
+### Framework Integrations
+
+```bash
+pip install psilogic[integrations]
+```
+
+```python
+# HuggingFace Trainer
+from psilogic.integrations.hf import psilogic_trainer_class
+Trainer = psilogic_trainer_class()
+Trainer(model=model, args=training_args, ...)
+
+# PyTorch Lightning
+from psilogic.integrations.lightning import configure_psilogic, ChaosMonitorCallback
+trainer = configure_psilogic(model, lr=3e-4)
+```
+
+See `examples/` for runnable scripts and `examples/torchtune/` for a torchtune YAML.
+
 ### Recommended Hyperparameters
 
 | Task | `lr` | `gamma` | `chaos_tau` | `gamma_T_max` |
@@ -305,14 +362,20 @@ optimizer = PsiLogicViT(model.parameters(), lr=1e-3, gamma_T_max=total_steps)
 ```bash
 git clone https://github.com/Troxter222/psilogic
 cd psilogic
-pip install -e ".[dev]"
+pip install -e ".[benchmark]"
 
-# CIFAR-10 (10 seeds) + nanoGPT (5 seeds) on NVIDIA A40
-python benchmark/benchmark_all.py
+# Single arena (from repo root)
+python benchmark/run_benchmark.py --task cifar10 --runs 10 --optimizers adamw psilogic
 
-# Multi-Arena: BERT / ViT / GPT-2 vs AdamW vs Lion
-python benchmark/benchmark_v3.py
+# Full reference suite (CIFAR-10, ViT, BERT, GPT-2, nanoGPT)
+python benchmark/run_all.py --suite v1
+
+# ImageNet DDP (multi-GPU, requires dataset path)
+torchrun --nproc_per_node=4 benchmark/imagenet/train_imagenet.py \
+    --data-dir /path/to/imagenet --optimizer psilogic
 ```
+
+See [`benchmark/README.md`](benchmark/README.md) for all arenas, flags, and ablation scripts.
 
 ---
 
