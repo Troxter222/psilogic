@@ -42,9 +42,12 @@ SUITES: dict[str, list[str]] = {
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the full PsiLogic benchmark suite")
     parser.add_argument("--suite", choices=sorted(SUITES), default="v1")
-    parser.add_argument("--optimizers", nargs="+", default=["adamw", "lion", "psilogic"])
+    parser.add_argument("--optimizers", nargs="+", default=["adam", "adamw", "lion", "psilogic"])
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--steps", type=int, default=1000)
+    parser.add_argument("--no-lr-search", action="store_true")
+    parser.add_argument("--lr-grid", nargs="+", type=float, default=None)
+    parser.add_argument("--lr-tune-steps", type=int, default=None)
     parser.add_argument("--output-dir", type=Path, default=Path("./results/suite"))
     parser.add_argument(
         "--preset", choices=["task", "vit", "auto"], default="task", dest="psilogic_preset"
@@ -67,6 +70,9 @@ def main() -> int:
         total_steps=args.steps,
         output_dir=args.output_dir,
         psilogic_preset=args.psilogic_preset,
+        tune_lr=not args.no_lr_search,
+        lr_grid=args.lr_grid,
+        lr_tune_steps=args.lr_tune_steps,
     )
 
     table = format_table(all_agg, title=f"Suite {args.suite} results")

@@ -42,6 +42,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.optim import Adam
 from torch.optim import AdamW
 from torch.optim.optimizer import Optimizer
 
@@ -337,6 +338,7 @@ class RunResult:
     optimizer: str
     run_id: int
     seed: int
+    lr: float
     total_steps: int
     final_loss: float
     final_metric: float
@@ -353,6 +355,7 @@ class RunResult:
 class AggResult:
     task: str
     optimizer: str
+    selected_lr: float
     n_runs: int
     final_metric_mean: float
     final_metric_std: float
@@ -380,6 +383,11 @@ def build_adamw(model: nn.Module, lr: float, steps: int, task: str, preset: str)
     return AdamW(model.parameters(), lr=lr, weight_decay=wd, betas=(0.9, 0.999), eps=1e-8)
 
 
+def build_adam(model: nn.Module, lr: float, steps: int, task: str, preset: str) -> Optimizer:
+    wd = _TASK_WD[task]
+    return Adam(model.parameters(), lr=lr, weight_decay=wd, betas=(0.9, 0.999), eps=1e-8)
+
+
 def build_lion(model: nn.Module, lr: float, steps: int, task: str, preset: str) -> Optimizer:
     wd = _TASK_WD[task]
     return Lion(model.parameters(), lr=lr / 5.0, betas=(0.9, 0.99), weight_decay=wd * 10.0)
@@ -405,6 +413,7 @@ def build_psilogic(model: nn.Module, lr: float, steps: int, task: str, preset: s
 
 
 OPTIMIZER_REGISTRY: dict[str, Callable] = {
+    "adam": build_adam,
     "adamw": build_adamw,
     "lion": build_lion,
     "psilogic": build_psilogic,
@@ -688,6 +697,7 @@ class TrainConfig:
     timing_warmup: int = 10
     log_interval: int = 50
     psilogic_preset: str = "task"  # "task" | "vit" | "auto"
+    save_checkpoint: bool = True
     tg_token: str = ""
     tg_chat: str = ""
 
@@ -825,25 +835,26 @@ class Trainer:
         valid_records = [r for r in step_records if not r.is_nan]
         final_loss = valid_records[-1].train_loss if valid_records else float("nan")
 
-        saved_models_dir = Path("./saved_models")
-        saved_models_dir.mkdir(parents=True, exist_ok=True)
-        ckpt_path = saved_models_dir / (
-            f"{self.cfg.task}_{self.cfg.optimizer_name}_run{self.cfg.run_id}.pt"
-        )
-
-        model_to_save = self.model
-        if hasattr(model_to_save, "_orig_mod"):
-            model_to_save = model_to_save._orig_mod
-        torch.save(model_to_save.state_dict(), ckpt_path)
-        log.info("Saved checkpoint → %s", ckpt_path)
-
-        if self.cfg.tg_token and self.cfg.tg_chat:
-            caption = (
-                f"📦 {self.cfg.task.upper()} ({self.cfg.optimizer_name}) — "
-                f"Run {self.cfg.run_id}\n"
-                f"Loss: {final_loss:.4f}, {metric_name}: {final_metric:.4f}"
+        if self.cfg.save_checkpoint:
+            saved_models_dir = Path("./saved_models")
+            saved_models_dir.mkdir(parents=True, exist_ok=True)
+            ckpt_path = saved_models_dir / (
+                f"{self.cfg.task}_{self.cfg.optimizer_name}_run{self.cfg.run_id}.pt"
             )
-            send_telegram_file(self.cfg.tg_token, self.cfg.tg_chat, ckpt_path, caption)
+
+            model_to_save = self.model
+            if hasattr(model_to_save, "_orig_mod"):
+                model_to_save = model_to_save._orig_mod
+            torch.save(model_to_save.state_dict(), ckpt_path)
+            log.info("Saved checkpoint → %s", ckpt_path)
+
+            if self.cfg.tg_token and self.cfg.tg_chat:
+                caption = (
+                    f"📦 {self.cfg.task.upper()} ({self.cfg.optimizer_name}) — "
+                    f"Run {self.cfg.run_id}\n"
+                    f"Loss: {final_loss:.4f}, {metric_name}: {final_metric:.4f}"
+                )
+                send_telegram_file(self.cfg.tg_token, self.cfg.tg_chat, ckpt_path, caption)
 
         stability_score = (
             sum(1 for r in valid_records if r.grad_norm < 10.0) / len(valid_records)
@@ -856,6 +867,7 @@ class Trainer:
             optimizer=self.cfg.optimizer_name,
             run_id=self.cfg.run_id,
             seed=self.cfg.seed,
+            lr=self.cfg.lr,
             total_steps=self.cfg.total_steps,
             final_loss=final_loss,
             final_metric=final_metric,
@@ -1091,6 +1103,11 @@ _HF_TASKS = {"bert", "gpt2", "vit"}
 _TV_TASKS = {"vit", "cifar10"}
 
 
+def _metric_higher_is_better(metric_name: str) -> bool:
+    name = metric_name.lower()
+    return not any(token in name for token in ("loss", "perplexity", "error"))
+
+
 # ── Aggregation & table formatting ────────────────────────────────────────────
 
 
@@ -1112,6 +1129,7 @@ def aggregate(runs: list[RunResult]) -> AggResult:
     return AggResult(
         task=task,
         optimizer=opt,
+        selected_lr=runs[0].lr,
         n_runs=len(runs),
         final_metric_mean=m("final_metric"),
         final_metric_std=s("final_metric"),
@@ -1143,6 +1161,7 @@ def format_table(aggs: list[AggResult], title: str = "") -> str:
             metric_str = f"{a.final_metric_mean:.4f} ± {a.final_metric_std:.4f}"
         lines.append(
             f"<code>{a.task.upper():8s} | {a.optimizer:8s} | {mn:14s} | {metric_str}</code>"
+            f" <code>lr={a.selected_lr:.1e}</code>"
         )
     return "\n".join(lines)
 
@@ -1153,7 +1172,7 @@ def format_table(aggs: list[AggResult], title: str = "") -> str:
 def run_benchmark(
     tasks: Optional[list[str]] = None,
     optimizers: Optional[list[str]] = None,
-    n_runs: int = 2,
+    n_runs: int = 3,
     total_steps: int = 1000,
     batch_size: int = 32,
     accum_steps: int = 1,
@@ -1162,6 +1181,9 @@ def run_benchmark(
     output_dir: Path = Path("./results"),
     amp_dtype: str = "bf16",
     psilogic_preset: str = "task",
+    tune_lr: bool = True,
+    lr_grid: Optional[list[float]] = None,
+    lr_tune_steps: Optional[int] = None,
     tg_token: Optional[str] = None,
     tg_chat: Optional[str] = None,
 ) -> tuple[list[AggResult], list[RunResult]]:
@@ -1169,7 +1191,9 @@ def run_benchmark(
     if tasks is None:
         tasks = ["bert", "vit", "gpt2"]
     if optimizers is None:
-        optimizers = ["adamw", "lion", "psilogic"]
+        optimizers = ["adam", "adamw", "lion", "psilogic"]
+    if lr_grid is None:
+        lr_grid = [1e-5, 3e-5, 1e-4, 3e-4, 1e-3]
 
     env_token, env_chat = tg_credentials()
     tg_token = tg_token if tg_token is not None else env_token
@@ -1230,6 +1254,91 @@ def run_benchmark(
                 log.warning("Unknown optimizer '%s', skipping.", opt_name)
                 continue
 
+            selected_lr = default_lr
+            if tune_lr:
+                tune_seed = seeds[0]
+                tune_steps = lr_tune_steps or min(total_steps, max(100, total_steps // 3))
+                warmup_steps = max(20, tune_steps // 10)
+                scored_lrs: list[tuple[float, float, str]] = []
+                log.info(
+                    "[LR search] task=%s optimizer=%s grid=%s tune_steps=%d",
+                    task_name,
+                    opt_name,
+                    ",".join(f"{lr:.1e}" for lr in lr_grid),
+                    tune_steps,
+                )
+                for lr_candidate in lr_grid:
+                    cfg = TrainConfig(
+                        task=task_name,
+                        optimizer_name=opt_name,
+                        run_id=-1,
+                        seed=tune_seed,
+                        total_steps=tune_steps,
+                        warmup_steps=warmup_steps,
+                        batch_size=task_batch_size,
+                        accum_steps=accum_steps,
+                        lr=lr_candidate,
+                        use_amp=torch.cuda.is_available(),
+                        amp_dtype=amp_dtype,
+                        compile_model=compile_model,
+                        profile=profile,
+                        output_dir=output_dir,
+                        psilogic_preset=psilogic_preset,
+                        save_checkpoint=False,
+                        tg_token="",
+                        tg_chat="",
+                    )
+                    trainer = None
+                    try:
+                        deterministic_mode(True)
+                        trainer = TrainerCls(cfg)
+                        result = trainer.run()
+                        scored_lrs.append((lr_candidate, result.final_metric, result.metric_name))
+                        log.info(
+                            "[LR search] %s/%s lr=%.1e -> %s=%.6f",
+                            task_name,
+                            opt_name,
+                            lr_candidate,
+                            result.metric_name,
+                            result.final_metric,
+                        )
+                    except Exception as exc:
+                        log.warning(
+                            "[LR search] failed for %s/%s lr=%.1e: %s",
+                            task_name,
+                            opt_name,
+                            lr_candidate,
+                            exc,
+                        )
+                    finally:
+                        if trainer is not None and hasattr(trainer, "model"):
+                            del trainer.model
+                        trainer = None
+                        gc.collect()
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+
+                if not scored_lrs:
+                    log.warning(
+                        "[LR search] no successful trials for %s/%s, fallback to default lr=%.1e",
+                        task_name,
+                        opt_name,
+                        default_lr,
+                    )
+                else:
+                    metric_name = scored_lrs[0][2]
+                    reverse = _metric_higher_is_better(metric_name)
+                    scored_lrs.sort(key=lambda x: x[1], reverse=reverse)
+                    selected_lr = scored_lrs[0][0]
+                    log.info(
+                        "[LR search] selected lr for %s/%s: %.1e (%s=%.6f)",
+                        task_name,
+                        opt_name,
+                        selected_lr,
+                        metric_name,
+                        scored_lrs[0][1],
+                    )
+
             for run_id, seed in enumerate(seeds):
                 deterministic_mode(True)
                 cfg = TrainConfig(
@@ -1241,13 +1350,14 @@ def run_benchmark(
                     warmup_steps=max(20, total_steps // 10),
                     batch_size=task_batch_size,
                     accum_steps=accum_steps,
-                    lr=default_lr,
+                    lr=selected_lr,
                     use_amp=torch.cuda.is_available(),
                     amp_dtype=amp_dtype,
                     compile_model=compile_model,
                     profile=profile,
                     output_dir=output_dir,
                     psilogic_preset=psilogic_preset,
+                    save_checkpoint=True,
                     tg_token=tg_token,
                     tg_chat=tg_chat,
                 )
@@ -1298,8 +1408,8 @@ def run_benchmark(
 
 BENCHMARK_CONFIG: dict[str, Any] = dict(
     tasks=["bert", "vit", "gpt2"],
-    optimizers=["adamw", "lion", "psilogic"],
-    n_runs=2,
+    optimizers=["adam", "adamw", "lion", "psilogic"],
+    n_runs=3,
     total_steps=1000,
     batch_size=32,
     accum_steps=1,
@@ -1308,6 +1418,9 @@ BENCHMARK_CONFIG: dict[str, Any] = dict(
     profile=False,
     output_dir=Path("./results"),
     psilogic_preset="task",
+    tune_lr=True,
+    lr_grid=[1e-5, 3e-5, 1e-4, 3e-4, 1e-3],
+    lr_tune_steps=None,
 )
 
 
@@ -1383,7 +1496,7 @@ def _parse_cli() -> dict[str, Any]:
         "--optimizers",
         nargs="+",
         choices=sorted(OPTIMIZER_REGISTRY),
-        help="Optimizers to compare (default: adamw lion psilogic)",
+        help="Optimizers to compare (default: adam adamw lion psilogic)",
     )
     parser.add_argument("--runs", type=int, help="Seeded runs per combination")
     parser.add_argument("--steps", type=int, help="Training steps per run")
@@ -1398,6 +1511,22 @@ def _parse_cli() -> dict[str, Any]:
         dest="psilogic_preset",
         help="PsiLogic config source: per-task presets, PsiLogicViT param groups, or PsiLogic.auto",
     )
+    parser.add_argument(
+        "--no-lr-search",
+        action="store_true",
+        help="Disable per-optimizer LR search and use task defaults only",
+    )
+    parser.add_argument(
+        "--lr-grid",
+        nargs="+",
+        type=float,
+        help="LR candidates for per-optimizer search (default: 1e-5 3e-5 1e-4 3e-4 1e-3)",
+    )
+    parser.add_argument(
+        "--lr-tune-steps",
+        type=int,
+        help="Steps used for LR search trial runs (default: min(total_steps, max(100, total_steps//3)))",
+    )
     args = parser.parse_args()
 
     overrides: dict[str, Any] = {}
@@ -1411,12 +1540,16 @@ def _parse_cli() -> dict[str, Any]:
         "amp_dtype": args.amp_dtype,
         "output_dir": args.output_dir,
         "psilogic_preset": args.psilogic_preset,
+        "lr_grid": args.lr_grid,
+        "lr_tune_steps": args.lr_tune_steps,
     }
     for key, value in mapping.items():
         if value is not None:
             overrides[key] = value
     if args.compile:
         overrides["compile_model"] = True
+    if args.no_lr_search:
+        overrides["tune_lr"] = False
     return overrides
 
 
