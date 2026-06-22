@@ -1,0 +1,95 @@
+{
+  "arenas": [
+    "nlp",
+    "vit",
+    "resnet",
+    "diffusion"
+  ],
+  "optimizers": [
+    "adam",
+    "adamw",
+    "lion",
+    "psilogic"
+  ],
+  "sweep": {
+    "lr_min": 1e-05,
+    "lr_max": 0.01,
+    "num_lrs": 7,
+    "max_steps": 500,
+    "max_epochs": 5,
+    "explicit_grid": null
+  },
+  "train": {
+    "seeds": [
+      0,
+      1,
+      2
+    ],
+    "max_steps": 2000,
+    "max_epochs": 10,
+    "eval_every": 200,
+    "grad_clip": 1.0,
+    "warmup_steps": 100,
+    "use_scheduler": true
+  },
+  "hardware": {
+    "device": "cuda",
+    "amp": true,
+    "amp_dtype": "bfloat16",
+    "use_foreach": true,
+    "compile_model": false,
+    "num_workers": 8,
+    "pin_memory": true,
+    "cudnn_benchmark": true
+  },
+  "logging": {
+    "output_dir": "/workspace/results/full",
+    "run_name": null,
+    "csv": true,
+    "tensorboard": true,
+    "wandb": false,
+    "wandb_project": "fairbench-optimizers",
+    "wandb_entity": null,
+    "plots": true,
+    "log_every": 10
+  },
+  "arena_configs": {
+    "nlp": {
+      "name": "nlp",
+      "batch_size": 64,
+      "data_root": "/workspace/data",
+      "extra": {}
+    },
+    "vit": {
+      "name": "vit",
+      "batch_size": 64,
+      "data_root": "/workspace/data",
+      "extra": {}
+    },
+    "resnet": {
+      "name": "resnet",
+      "batch_size": 64,
+      "data_root": "/workspace/data",
+      "extra": {}
+    },
+    "diffusion": {
+      "name": "diffusion",
+      "batch_size": 64,
+      "data_root": "/workspace/data",
+      "extra": {}
+    }
+  },
+  "fixed_lrs": {},
+  "synthetic": false,
+  "offline": true,
+  "seed_base": 1234,
+  "runtime_hardware": {
+    "device": "cuda",
+    "device_type": "cuda",
+    "gpu_name": "NVIDIA H100 80GB HBM3",
+    "gpu_index": 0,
+    "gpu_vram_gb": 79.18,
+    "cuda_version": "12.4",
+    "torch_version": "2.4.1+cu124"
+  }
+}

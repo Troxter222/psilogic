@@ -1,0 +1,27 @@
+# Core (required)
+torch>=2.1
+torchvision>=0.16
+numpy>=1.23
+psilogic>=0.4.0          # the optimizer under test
+
+# Core (required)
+torch>=2.1
+torchvision>=0.16
+numpy>=1.23
+psilogic>=0.4.0          # the optimizer under test
+
+# Arenas (recommended; download works without these via stdlib fallbacks)
+timm>=0.9.0              # Arena 2: vit_tiny_patch16_224
+datasets>=2.14.0         # Arena 1: faster/reliable TinyStories streaming
+
+# Statistics & plotting (recommended; pure-Python fallbacks exist)
+scipy>=1.10              # exact Welch t-test p-values
+pandas>=2.0              # CSV analysis / LaTeX tables
+matplotlib>=3.7          # learning-curve plots with std bands
+
+# External logging (optional)
+tensorboard>=2.13
+wandb>=0.16
+
+# Optional metrics
+torchmetrics>=1.0        # Arena 4: FID (only if --compute-fid is enabled)

@@ -1,0 +1,386 @@
+root@fc1bef931619:/workspace# python -m fairbench.download --data-root /workspace/data --check-only
+[09:37:48] INFO tinystories: OK
+[09:37:48] INFO cifar100: OK
+[09:37:48] INFO tiny_imagenet: OK
+[09:37:48] INFO celeba: OK
+root@fc1bef931619:/workspace# python -m fairbench \
+  --data-root /workspace/data \
+  --offline \
+  --output-dir /workspace/results/full \
+  --device cuda \
+  --amp-dtype bfloat16 \
+  --num-workers 8
+[09:38:23] INFO ============================================================
+[09:38:23] INFO Training device: GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM)
+[09:38:23] INFO PyTorch 2.4.1+cu124 | CUDA 12.4
+[09:38:23] INFO ============================================================
+[09:38:23] INFO Offline mode: datasets must exist under /workspace/data
+[09:38:23] INFO optimizers=['adam', 'adamw', 'lion', 'psilogic'] | arenas=['nlp', 'vit', 'resnet', 'diffusion']
+[09:38:23] INFO === Arena: nlp ===
+[09:38:23] INFO Loaded TinyStories from local cache (/workspace/data/tinystories): 2004178 train, 200000 val tokens.
+[09:38:23] INFO NLP arena ready (local cache): 2004178 train tokens, 200000 val tokens.
+[09:38:23] INFO [nlp/adam] LR sweep over ['1.0e-05', '3.2e-05', '1.0e-04', '3.2e-04', '1.0e-03', '3.2e-03', '1.0e-02']
+[09:38:23] INFO [nlp/adam/seed0] lr=1.00e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=3.26M | 500 steps
+[09:38:34] INFO [nlp/adam] lr=1.0e-05 -> val_loss=3.0907  <-- best
+[09:38:34] INFO [nlp/adam/seed0] lr=3.16e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=3.26M | 500 steps
+[09:38:45] INFO [nlp/adam] lr=3.2e-05 -> val_loss=2.7041  <-- best
+[09:38:45] INFO [nlp/adam/seed0] lr=1.00e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=3.26M | 500 steps
+[09:38:56] INFO [nlp/adam] lr=1.0e-04 -> val_loss=2.6438  <-- best
+[09:38:56] INFO [nlp/adam/seed0] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=3.26M | 500 steps
+[09:39:07] INFO [nlp/adam] lr=3.2e-04 -> val_loss=2.5893  <-- best
+[09:39:07] INFO [nlp/adam/seed0] lr=1.00e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=3.26M | 500 steps
+[09:39:18] INFO [nlp/adam] lr=1.0e-03 -> val_loss=2.6713
+[09:39:18] INFO [nlp/adam/seed0] lr=3.16e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=3.26M | 500 steps
+[09:39:28] INFO [nlp/adam] lr=3.2e-03 -> val_loss=3.0237
+[09:39:28] INFO [nlp/adam/seed0] lr=1.00e-02 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=3.26M | 500 steps
+[09:39:39] INFO [nlp/adam] lr=1.0e-02 -> val_loss=2.9310
+[09:39:39] INFO [nlp/adam] selected lr=3.16e-04 (val_loss=2.5893)
+[09:39:39] INFO [nlp/adamw] LR sweep over ['1.0e-05', '3.2e-05', '1.0e-04', '3.2e-04', '1.0e-03', '3.2e-03', '1.0e-02']
+[09:39:39] INFO [nlp/adamw/seed0] lr=1.00e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=3.26M | 500 steps
+[09:39:50] INFO [nlp/adamw] lr=1.0e-05 -> val_loss=2.7543  <-- best
+[09:39:50] INFO [nlp/adamw/seed0] lr=3.16e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=3.26M | 500 steps
+[09:40:00] INFO [nlp/adamw] lr=3.2e-05 -> val_loss=2.2458  <-- best
+[09:40:00] INFO [nlp/adamw/seed0] lr=1.00e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=3.26M | 500 steps
+[09:40:11] INFO [nlp/adamw] lr=1.0e-04 -> val_loss=1.6917  <-- best
+[09:40:11] INFO [nlp/adamw/seed0] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=3.26M | 500 steps
+[09:40:21] INFO [nlp/adamw] lr=3.2e-04 -> val_loss=1.3860  <-- best
+[09:40:21] INFO [nlp/adamw/seed0] lr=1.00e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=3.26M | 500 steps
+[09:40:31] INFO [nlp/adamw] lr=1.0e-03 -> val_loss=1.4952
+[09:40:32] INFO [nlp/adamw/seed0] lr=3.16e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=3.26M | 500 steps
+[09:40:39] INFO [nlp/adamw] lr=3.2e-03 -> val_loss=2.3404
+[09:40:39] INFO [nlp/adamw/seed0] lr=1.00e-02 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=3.26M | 500 steps
+[09:40:46] INFO [nlp/adamw] lr=1.0e-02 -> val_loss=2.4205
+[09:40:46] INFO [nlp/adamw] selected lr=3.16e-04 (val_loss=1.3860)
+[09:40:46] INFO [nlp/lion] LR sweep over ['1.0e-05', '3.2e-05', '1.0e-04', '3.2e-04', '1.0e-03', '3.2e-03', '1.0e-02']
+[09:40:46] INFO [nlp/lion/seed0] lr=1.00e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=3.26M | 500 steps
+[09:40:54] INFO [nlp/lion] lr=1.0e-05 -> val_loss=2.7426  <-- best
+[09:40:54] INFO [nlp/lion/seed0] lr=3.16e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=3.26M | 500 steps
+[09:41:01] INFO [nlp/lion] lr=3.2e-05 -> val_loss=2.0847  <-- best
+[09:41:01] INFO [nlp/lion/seed0] lr=1.00e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=3.26M | 500 steps
+[09:41:09] INFO [nlp/lion] lr=1.0e-04 -> val_loss=1.5894  <-- best
+[09:41:09] INFO [nlp/lion/seed0] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=3.26M | 500 steps
+[09:41:17] INFO [nlp/lion] lr=3.2e-04 -> val_loss=1.4283  <-- best
+[09:41:17] INFO [nlp/lion/seed0] lr=1.00e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=3.26M | 500 steps
+[09:41:25] INFO [nlp/lion] lr=1.0e-03 -> val_loss=2.3305
+[09:41:25] INFO [nlp/lion/seed0] lr=3.16e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=3.26M | 500 steps
+[09:41:32] INFO [nlp/lion] lr=3.2e-03 -> val_loss=2.6334
+[09:41:32] INFO [nlp/lion/seed0] lr=1.00e-02 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=3.26M | 500 steps
+[09:41:40] INFO [nlp/lion] lr=1.0e-02 -> val_loss=3.0942
+[09:41:40] INFO [nlp/lion] selected lr=3.16e-04 (val_loss=1.4283)
+[09:41:40] INFO [nlp/psilogic] LR sweep over ['1.0e-05', '3.2e-05', '1.0e-04', '3.2e-04', '1.0e-03', '3.2e-03', '1.0e-02']
+[09:41:40] INFO [nlp/psilogic/seed0] lr=1.00e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=3.26M | 500 steps
+[09:41:52] INFO [nlp/psilogic] lr=1.0e-05 -> val_loss=2.7567  <-- best
+[09:41:52] INFO [nlp/psilogic/seed0] lr=3.16e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=3.26M | 500 steps
+[09:42:05] INFO [nlp/psilogic] lr=3.2e-05 -> val_loss=2.2271  <-- best
+[09:42:05] INFO [nlp/psilogic/seed0] lr=1.00e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=3.26M | 500 steps
+[09:42:17] INFO [nlp/psilogic] lr=1.0e-04 -> val_loss=1.7348  <-- best
+[09:42:17] INFO [nlp/psilogic/seed0] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=3.26M | 500 steps
+[09:42:30] INFO [nlp/psilogic] lr=3.2e-04 -> val_loss=1.4166  <-- best
+[09:42:30] INFO [nlp/psilogic/seed0] lr=1.00e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=3.26M | 500 steps
+[09:42:42] INFO [nlp/psilogic] lr=1.0e-03 -> val_loss=1.4757
+[09:42:42] INFO [nlp/psilogic/seed0] lr=3.16e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=3.26M | 500 steps
+[09:42:54] INFO [nlp/psilogic] lr=3.2e-03 -> val_loss=2.2999
+[09:42:54] INFO [nlp/psilogic/seed0] lr=1.00e-02 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=3.26M | 500 steps
+[09:43:06] INFO [nlp/psilogic] lr=1.0e-02 -> val_loss=2.4052
+[09:43:06] INFO [nlp/psilogic] selected lr=3.16e-04 (val_loss=1.4166)
+[09:43:06] INFO [nlp/adam/seed0] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=3.26M | 2000 steps
+[09:43:52] INFO [nlp/adamw/seed0] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=3.26M | 2000 steps
+[09:44:40] INFO [nlp/lion/seed0] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=3.26M | 2000 steps
+[09:45:27] INFO [nlp/psilogic/seed0] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=3.26M | 2000 steps
+[09:46:24] INFO [nlp/adam/seed1] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=3.26M | 2000 steps
+[09:47:13] INFO [nlp/adamw/seed1] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=3.26M | 2000 steps
+[09:48:01] INFO [nlp/lion/seed1] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=3.26M | 2000 steps
+[09:48:36] INFO [nlp/psilogic/seed1] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=3.26M | 2000 steps
+[09:49:34] INFO [nlp/adam/seed2] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=3.26M | 2000 steps
+[09:50:25] INFO [nlp/adamw/seed2] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=3.26M | 2000 steps
+[09:51:13] INFO [nlp/lion/seed2] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=3.26M | 2000 steps
+[09:51:52] INFO [nlp/psilogic/seed2] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=3.26M | 2000 steps
+[09:52:51] INFO === Arena: vit ===
+[09:52:51] INFO CIFAR-100 found locally (/workspace/data).
+[09:53:02] INFO [vit/adam] LR sweep over ['1.0e-05', '3.2e-05', '1.0e-04', '3.2e-04', '1.0e-03', '3.2e-03', '1.0e-02']
+[09:53:03] INFO [vit/adam/seed0] lr=1.00e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=5.54M | 500 steps
+[09:53:24] INFO [vit/adam] lr=1.0e-05 -> val_acc=0.0510  <-- best
+[09:53:25] INFO [vit/adam/seed0] lr=3.16e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=5.54M | 500 steps
+[09:53:46] INFO [vit/adam] lr=3.2e-05 -> val_acc=0.0579  <-- best
+[09:53:46] INFO [vit/adam/seed0] lr=1.00e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=5.54M | 500 steps
+[09:54:08] INFO [vit/adam] lr=1.0e-04 -> val_acc=0.0506
+[09:54:09] INFO [vit/adam/seed0] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=5.54M | 500 steps
+[09:54:29] INFO [vit/adam] lr=3.2e-04 -> val_acc=0.0419
+[09:54:29] INFO [vit/adam/seed0] lr=1.00e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=5.54M | 500 steps
+[09:54:50] INFO [vit/adam] lr=1.0e-03 -> val_acc=0.0333
+[09:54:51] INFO [vit/adam/seed0] lr=3.16e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=5.54M | 500 steps
+[09:55:13] INFO [vit/adam] lr=3.2e-03 -> val_acc=0.0331
+[09:55:13] INFO [vit/adam/seed0] lr=1.00e-02 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=5.54M | 500 steps
+[09:55:35] INFO [vit/adam] lr=1.0e-02 -> val_acc=0.0194
+[09:55:35] INFO [vit/adam] selected lr=3.16e-05 (val_acc=0.0579)
+[09:55:35] INFO [vit/adamw] LR sweep over ['1.0e-05', '3.2e-05', '1.0e-04', '3.2e-04', '1.0e-03', '3.2e-03', '1.0e-02']
+[09:55:35] INFO [vit/adamw/seed0] lr=1.00e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=5.54M | 500 steps
+[09:55:54] INFO [vit/adamw] lr=1.0e-05 -> val_acc=0.0712  <-- best
+[09:55:55] INFO [vit/adamw/seed0] lr=3.16e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=5.54M | 500 steps
+[09:56:11] INFO [vit/adamw] lr=3.2e-05 -> val_acc=0.0941  <-- best
+[09:56:11] INFO [vit/adamw/seed0] lr=1.00e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=5.54M | 500 steps
+[09:56:32] INFO [vit/adamw] lr=1.0e-04 -> val_acc=0.1070  <-- best
+[09:56:32] INFO [vit/adamw/seed0] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=5.54M | 500 steps
+[09:56:54] INFO [vit/adamw] lr=3.2e-04 -> val_acc=0.1086  <-- best
+[09:56:55] INFO [vit/adamw/seed0] lr=1.00e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=5.54M | 500 steps
+[09:57:17] INFO [vit/adamw] lr=1.0e-03 -> val_acc=0.0973
+[09:57:17] INFO [vit/adamw/seed0] lr=3.16e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=5.54M | 500 steps
+[09:57:38] INFO [vit/adamw] lr=3.2e-03 -> val_acc=0.0309
+[09:57:38] INFO [vit/adamw/seed0] lr=1.00e-02 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=5.54M | 500 steps
+[09:58:00] INFO [vit/adamw] lr=1.0e-02 -> val_acc=0.0293
+[09:58:00] INFO [vit/adamw] selected lr=3.16e-04 (val_acc=0.1086)
+[09:58:00] INFO [vit/lion] LR sweep over ['1.0e-05', '3.2e-05', '1.0e-04', '3.2e-04', '1.0e-03', '3.2e-03', '1.0e-02']
+[09:58:00] INFO [vit/lion/seed0] lr=1.00e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=5.54M | 500 steps
+[09:58:17] INFO [vit/lion] lr=1.0e-05 -> val_acc=0.0873  <-- best
+[09:58:18] INFO [vit/lion/seed0] lr=3.16e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=5.54M | 500 steps
+[09:58:35] INFO [vit/lion] lr=3.2e-05 -> val_acc=0.1097  <-- best
+[09:58:36] INFO [vit/lion/seed0] lr=1.00e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=5.54M | 500 steps
+[09:58:54] INFO [vit/lion] lr=1.0e-04 -> val_acc=0.1102  <-- best
+[09:58:54] INFO [vit/lion/seed0] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=5.54M | 500 steps
+[09:59:13] INFO [vit/lion] lr=3.2e-04 -> val_acc=0.1014
+[09:59:14] INFO [vit/lion/seed0] lr=1.00e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=5.54M | 500 steps
+[09:59:32] INFO [vit/lion] lr=1.0e-03 -> val_acc=0.0300
+[09:59:32] INFO [vit/lion/seed0] lr=3.16e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=5.54M | 500 steps
+[09:59:50] INFO [vit/lion] lr=3.2e-03 -> val_acc=0.0240
+[09:59:50] INFO [vit/lion/seed0] lr=1.00e-02 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=5.54M | 500 steps
+[10:00:08] INFO [vit/lion] lr=1.0e-02 -> val_acc=0.0115
+[10:00:08] INFO [vit/lion] selected lr=1.00e-04 (val_acc=0.1102)
+[10:00:08] INFO [vit/psilogic] LR sweep over ['1.0e-05', '3.2e-05', '1.0e-04', '3.2e-04', '1.0e-03', '3.2e-03', '1.0e-02']
+[10:00:08] INFO [vit/psilogic/seed0] lr=1.00e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=5.54M | 500 steps
+[10:00:42] INFO [vit/psilogic] lr=1.0e-05 -> val_acc=0.0700  <-- best
+[10:00:42] INFO [vit/psilogic/seed0] lr=3.16e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=5.54M | 500 steps
+[10:01:17] INFO [vit/psilogic] lr=3.2e-05 -> val_acc=0.0922  <-- best
+[10:01:18] INFO [vit/psilogic/seed0] lr=1.00e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=5.54M | 500 steps
+[10:01:50] INFO [vit/psilogic] lr=1.0e-04 -> val_acc=0.1134  <-- best
+[10:01:50] INFO [vit/psilogic/seed0] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=5.54M | 500 steps
+[10:02:24] INFO [vit/psilogic] lr=3.2e-04 -> val_acc=0.1176  <-- best
+[10:02:24] INFO [vit/psilogic/seed0] lr=1.00e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=5.54M | 500 steps
+[10:03:01] INFO [vit/psilogic] lr=1.0e-03 -> val_acc=0.0973
+[10:03:02] INFO [vit/psilogic/seed0] lr=3.16e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=5.54M | 500 steps
+[10:03:39] INFO [vit/psilogic] lr=3.2e-03 -> val_acc=0.0304
+[10:03:39] INFO [vit/psilogic/seed0] lr=1.00e-02 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=5.54M | 500 steps
+[10:04:17] INFO [vit/psilogic] lr=1.0e-02 -> val_acc=0.0191
+[10:04:17] INFO [vit/psilogic] selected lr=3.16e-04 (val_acc=0.1176)
+[10:04:18] INFO [vit/adam/seed0] lr=3.16e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=5.54M | 2000 steps
+[10:05:49] INFO [vit/adamw/seed0] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=5.54M | 2000 steps
+[10:07:27] INFO [vit/lion/seed0] lr=1.00e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=5.54M | 2000 steps
+[10:09:15] INFO [vit/psilogic/seed0] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=5.54M | 2000 steps
+[10:12:12] INFO [vit/adam/seed1] lr=3.16e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=5.54M | 2000 steps
+[10:13:53] INFO [vit/adamw/seed1] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=5.54M | 2000 steps
+[10:15:43] INFO [vit/lion/seed1] lr=1.00e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=5.54M | 2000 steps
+[10:17:31] INFO [vit/psilogic/seed1] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=5.54M | 2000 steps
+[10:20:39] INFO [vit/adam/seed2] lr=3.16e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=5.54M | 2000 steps
+[10:22:32] INFO [vit/adamw/seed2] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=5.54M | 2000 steps
+[10:24:19] INFO [vit/lion/seed2] lr=1.00e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=5.54M | 2000 steps
+[10:26:00] INFO [vit/psilogic/seed2] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=5.54M | 2000 steps
+[10:29:08] INFO === Arena: resnet ===
+[10:29:08] INFO [resnet/adam] LR sweep over ['1.0e-05', '3.2e-05', '1.0e-04', '3.2e-04', '1.0e-03', '3.2e-03', '1.0e-02']
+[10:29:08] INFO [resnet/adam/seed0] lr=1.00e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=11.27M | 500 steps
+[10:29:20] INFO [resnet/adam] lr=1.0e-05 -> val_acc=0.0357  <-- best
+[10:29:20] INFO [resnet/adam/seed0] lr=3.16e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=11.27M | 500 steps
+[10:29:31] INFO [resnet/adam] lr=3.2e-05 -> val_acc=0.0592  <-- best
+[10:29:31] INFO [resnet/adam/seed0] lr=1.00e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=11.27M | 500 steps
+[10:29:41] INFO [resnet/adam] lr=1.0e-04 -> val_acc=0.0778  <-- best
+[10:29:41] INFO [resnet/adam/seed0] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=11.27M | 500 steps
+[10:29:52] INFO [resnet/adam] lr=3.2e-04 -> val_acc=0.0773
+[10:29:52] INFO [resnet/adam/seed0] lr=1.00e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=11.27M | 500 steps
+[10:30:02] INFO [resnet/adam] lr=1.0e-03 -> val_acc=0.0414
+[10:30:02] INFO [resnet/adam/seed0] lr=3.16e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=11.27M | 500 steps
+[10:30:12] INFO [resnet/adam] lr=3.2e-03 -> val_acc=0.0263
+[10:30:12] INFO [resnet/adam/seed0] lr=1.00e-02 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=11.27M | 500 steps
+[10:30:23] INFO [resnet/adam] lr=1.0e-02 -> val_acc=0.0168
+[10:30:23] INFO [resnet/adam] selected lr=1.00e-04 (val_acc=0.0778)
+[10:30:23] INFO [resnet/adamw] LR sweep over ['1.0e-05', '3.2e-05', '1.0e-04', '3.2e-04', '1.0e-03', '3.2e-03', '1.0e-02']
+[10:30:23] INFO [resnet/adamw/seed0] lr=1.00e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=11.27M | 500 steps
+[10:30:34] INFO [resnet/adamw] lr=1.0e-05 -> val_acc=0.0349  <-- best
+[10:30:34] INFO [resnet/adamw/seed0] lr=3.16e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=11.27M | 500 steps
+[10:30:45] INFO [resnet/adamw] lr=3.2e-05 -> val_acc=0.0600  <-- best
+[10:30:45] INFO [resnet/adamw/seed0] lr=1.00e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=11.27M | 500 steps
+[10:30:56] INFO [resnet/adamw] lr=1.0e-04 -> val_acc=0.0789  <-- best
+[10:30:56] INFO [resnet/adamw/seed0] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=11.27M | 500 steps
+[10:31:07] INFO [resnet/adamw] lr=3.2e-04 -> val_acc=0.0882  <-- best
+[10:31:07] INFO [resnet/adamw/seed0] lr=1.00e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=11.27M | 500 steps
+[10:31:18] INFO [resnet/adamw] lr=1.0e-03 -> val_acc=0.0607
+[10:31:18] INFO [resnet/adamw/seed0] lr=3.16e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=11.27M | 500 steps
+[10:31:28] INFO [resnet/adamw] lr=3.2e-03 -> val_acc=0.0394
+[10:31:28] INFO [resnet/adamw/seed0] lr=1.00e-02 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=11.27M | 500 steps
+[10:31:39] INFO [resnet/adamw] lr=1.0e-02 -> val_acc=0.0216
+[10:31:39] INFO [resnet/adamw] selected lr=3.16e-04 (val_acc=0.0882)
+[10:31:39] INFO [resnet/lion] LR sweep over ['1.0e-05', '3.2e-05', '1.0e-04', '3.2e-04', '1.0e-03', '3.2e-03', '1.0e-02']
+[10:31:39] INFO [resnet/lion/seed0] lr=1.00e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=11.27M | 500 steps
+[10:31:50] INFO [resnet/lion] lr=1.0e-05 -> val_acc=0.0659  <-- best
+[10:31:50] INFO [resnet/lion/seed0] lr=3.16e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=11.27M | 500 steps
+[10:32:01] INFO [resnet/lion] lr=3.2e-05 -> val_acc=0.0883  <-- best
+[10:32:01] INFO [resnet/lion/seed0] lr=1.00e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=11.27M | 500 steps
+[10:32:12] INFO [resnet/lion] lr=1.0e-04 -> val_acc=0.1002  <-- best
+[10:32:12] INFO [resnet/lion/seed0] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=11.27M | 500 steps
+[10:32:20] INFO [resnet/lion] lr=3.2e-04 -> val_acc=0.0765
+[10:32:21] INFO [resnet/lion/seed0] lr=1.00e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=11.27M | 500 steps
+[10:32:32] INFO [resnet/lion] lr=1.0e-03 -> val_acc=0.0607
+[10:32:32] INFO [resnet/lion/seed0] lr=3.16e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=11.27M | 500 steps
+[10:32:43] INFO [resnet/lion] lr=3.2e-03 -> val_acc=0.0133
+[10:32:43] INFO [resnet/lion/seed0] lr=1.00e-02 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=11.27M | 500 steps
+[10:32:54] INFO [resnet/lion] lr=1.0e-02 -> val_acc=0.0149
+[10:32:54] INFO [resnet/lion] selected lr=1.00e-04 (val_acc=0.1002)
+[10:32:54] INFO [resnet/psilogic] LR sweep over ['1.0e-05', '3.2e-05', '1.0e-04', '3.2e-04', '1.0e-03', '3.2e-03', '1.0e-02']
+[10:32:54] INFO [resnet/psilogic/seed0] lr=1.00e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=11.27M | 500 steps
+[10:33:09] INFO [resnet/psilogic] lr=1.0e-05 -> val_acc=0.0287  <-- best
+[10:33:09] INFO [resnet/psilogic/seed0] lr=3.16e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=11.27M | 500 steps
+[10:33:24] INFO [resnet/psilogic] lr=3.2e-05 -> val_acc=0.0564  <-- best
+[10:33:24] INFO [resnet/psilogic/seed0] lr=1.00e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=11.27M | 500 steps
+[10:33:38] INFO [resnet/psilogic] lr=1.0e-04 -> val_acc=0.0833  <-- best
+[10:33:39] INFO [resnet/psilogic/seed0] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=11.27M | 500 steps
+[10:33:53] INFO [resnet/psilogic] lr=3.2e-04 -> val_acc=0.0991  <-- best
+[10:33:53] INFO [resnet/psilogic/seed0] lr=1.00e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=11.27M | 500 steps
+[10:34:06] INFO [resnet/psilogic] lr=1.0e-03 -> val_acc=0.0880
+[10:34:07] INFO [resnet/psilogic/seed0] lr=3.16e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=11.27M | 500 steps
+[10:34:20] INFO [resnet/psilogic] lr=3.2e-03 -> val_acc=0.0585
+[10:34:20] INFO [resnet/psilogic/seed0] lr=1.00e-02 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=11.27M | 500 steps
+[10:34:32] INFO [resnet/psilogic] lr=1.0e-02 -> val_acc=0.0437
+[10:34:32] INFO [resnet/psilogic] selected lr=3.16e-04 (val_acc=0.0991)
+[10:34:33] INFO [resnet/adam/seed0] lr=1.00e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=11.27M | 2000 steps
+[10:35:28] INFO [resnet/adamw/seed0] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=11.27M | 2000 steps
+[10:36:25] INFO [resnet/lion/seed0] lr=1.00e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=11.27M | 2000 steps
+[10:37:20] INFO [resnet/psilogic/seed0] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=11.27M | 2000 steps
+[10:38:38] INFO [resnet/adam/seed1] lr=1.00e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=11.27M | 2000 steps
+[10:39:33] INFO [resnet/adamw/seed1] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=11.27M | 2000 steps
+[10:40:30] INFO [resnet/lion/seed1] lr=1.00e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=11.27M | 2000 steps
+[10:41:29] INFO [resnet/psilogic/seed1] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=11.27M | 2000 steps
+[10:42:47] INFO [resnet/adam/seed2] lr=1.00e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=11.27M | 2000 steps
+[10:43:44] INFO [resnet/adamw/seed2] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=11.27M | 2000 steps
+[10:44:45] INFO [resnet/lion/seed2] lr=1.00e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=11.27M | 2000 steps
+[10:45:43] INFO [resnet/psilogic/seed2] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=11.27M | 2000 steps
+[10:47:04] INFO === Arena: diffusion ===
+[10:47:04] INFO CelebA found locally (huggingface layout, /workspace/data).
+[10:47:04] INFO CelebA HF layout: 192470 train / 10129 val images (from /workspace/data/celeba/Dataset/CelebA_train/img_align_celeba).
+[10:47:04] INFO [diffusion/adam] LR sweep over ['1.0e-05', '3.2e-05', '1.0e-04', '3.2e-04', '1.0e-03', '3.2e-03', '1.0e-02']
+[10:47:04] INFO [diffusion/adam/seed0] lr=1.00e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=3.44M | 500 steps
+[10:47:24] INFO [diffusion/adam] lr=1.0e-05 -> val_loss=0.0943  <-- best
+[10:47:24] INFO [diffusion/adam/seed0] lr=3.16e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=3.44M | 500 steps
+[10:47:43] INFO [diffusion/adam] lr=3.2e-05 -> val_loss=0.0551  <-- best
+[10:47:43] INFO [diffusion/adam/seed0] lr=1.00e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=3.44M | 500 steps
+[10:48:01] INFO [diffusion/adam] lr=1.0e-04 -> val_loss=0.0365  <-- best
+[10:48:01] INFO [diffusion/adam/seed0] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=3.44M | 500 steps
+[10:48:20] INFO [diffusion/adam] lr=3.2e-04 -> val_loss=0.0282  <-- best
+[10:48:20] INFO [diffusion/adam/seed0] lr=1.00e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=3.44M | 500 steps
+[10:48:40] INFO [diffusion/adam] lr=1.0e-03 -> val_loss=0.0279  <-- best
+[10:48:40] INFO [diffusion/adam/seed0] lr=3.16e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=3.44M | 500 steps
+[10:48:58] INFO [diffusion/adam] lr=3.2e-03 -> val_loss=0.7138
+[10:48:58] INFO [diffusion/adam/seed0] lr=1.00e-02 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=3.44M | 500 steps
+[10:49:17] INFO [diffusion/adam] lr=1.0e-02 -> val_loss=0.9999
+[10:49:17] INFO [diffusion/adam] selected lr=1.00e-03 (val_loss=0.0279)
+[10:49:17] INFO [diffusion/adamw] LR sweep over ['1.0e-05', '3.2e-05', '1.0e-04', '3.2e-04', '1.0e-03', '3.2e-03', '1.0e-02']
+[10:49:17] INFO [diffusion/adamw/seed0] lr=1.00e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=3.44M | 500 steps
+[10:49:37] INFO [diffusion/adamw] lr=1.0e-05 -> val_loss=0.0943  <-- best
+[10:49:37] INFO [diffusion/adamw/seed0] lr=3.16e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=3.44M | 500 steps
+[10:49:58] INFO [diffusion/adamw] lr=3.2e-05 -> val_loss=0.0551  <-- best
+[10:49:58] INFO [diffusion/adamw/seed0] lr=1.00e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=3.44M | 500 steps
+[10:50:15] INFO [diffusion/adamw] lr=1.0e-04 -> val_loss=0.0365  <-- best
+[10:50:15] INFO [diffusion/adamw/seed0] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=3.44M | 500 steps
+[10:50:35] INFO [diffusion/adamw] lr=3.2e-04 -> val_loss=0.0282  <-- best
+[10:50:35] INFO [diffusion/adamw/seed0] lr=1.00e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=3.44M | 500 steps
+[10:50:53] INFO [diffusion/adamw] lr=1.0e-03 -> val_loss=0.0279  <-- best
+[10:50:53] INFO [diffusion/adamw/seed0] lr=3.16e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=3.44M | 500 steps
+[10:51:11] INFO [diffusion/adamw] lr=3.2e-03 -> val_loss=0.7138
+[10:51:12] INFO [diffusion/adamw/seed0] lr=1.00e-02 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=3.44M | 500 steps
+[10:51:31] INFO [diffusion/adamw] lr=1.0e-02 -> val_loss=0.9999
+[10:51:31] INFO [diffusion/adamw] selected lr=1.00e-03 (val_loss=0.0279)
+[10:51:31] INFO [diffusion/lion] LR sweep over ['1.0e-05', '3.2e-05', '1.0e-04', '3.2e-04', '1.0e-03', '3.2e-03', '1.0e-02']
+[10:51:31] INFO [diffusion/lion/seed0] lr=1.00e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=3.44M | 500 steps
+[10:51:51] INFO [diffusion/lion] lr=1.0e-05 -> val_loss=0.0730  <-- best
+[10:51:51] INFO [diffusion/lion/seed0] lr=3.16e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=3.44M | 500 steps
+[10:52:10] INFO [diffusion/lion] lr=3.2e-05 -> val_loss=0.0383  <-- best
+[10:52:10] INFO [diffusion/lion/seed0] lr=1.00e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=3.44M | 500 steps
+[10:52:30] INFO [diffusion/lion] lr=1.0e-04 -> val_loss=0.0277  <-- best
+[10:52:30] INFO [diffusion/lion/seed0] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=3.44M | 500 steps
+[10:52:50] INFO [diffusion/lion] lr=3.2e-04 -> val_loss=0.0284
+[10:52:50] INFO [diffusion/lion/seed0] lr=1.00e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=3.44M | 500 steps
+[10:53:08] INFO [diffusion/lion] lr=1.0e-03 -> val_loss=0.0785
+[10:53:08] INFO [diffusion/lion/seed0] lr=3.16e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=3.44M | 500 steps
+[10:53:26] INFO [diffusion/lion] lr=3.2e-03 -> val_loss=1.0025
+[10:53:26] INFO [diffusion/lion/seed0] lr=1.00e-02 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=3.44M | 500 steps
+[10:53:48] INFO [diffusion/lion] lr=1.0e-02 -> val_loss=1.6336
+[10:53:48] INFO [diffusion/lion] selected lr=1.00e-04 (val_loss=0.0277)
+[10:53:48] INFO [diffusion/psilogic] LR sweep over ['1.0e-05', '3.2e-05', '1.0e-04', '3.2e-04', '1.0e-03', '3.2e-03', '1.0e-02']
+[10:53:48] INFO [diffusion/psilogic/seed0] lr=1.00e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=3.44M | 500 steps
+[10:54:20] INFO [diffusion/psilogic] lr=1.0e-05 -> val_loss=0.0812  <-- best
+[10:54:20] INFO [diffusion/psilogic/seed0] lr=3.16e-05 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=3.44M | 500 steps
+[10:54:56] INFO [diffusion/psilogic] lr=3.2e-05 -> val_loss=0.0493  <-- best
+[10:54:56] INFO [diffusion/psilogic/seed0] lr=1.00e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=3.44M | 500 steps
+[10:55:31] INFO [diffusion/psilogic] lr=1.0e-04 -> val_loss=0.0342  <-- best
+[10:55:31] INFO [diffusion/psilogic/seed0] lr=3.16e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=3.44M | 500 steps
+[10:56:05] INFO [diffusion/psilogic] lr=3.2e-04 -> val_loss=0.0274  <-- best
+[10:56:05] INFO [diffusion/psilogic/seed0] lr=1.00e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=3.44M | 500 steps
+[10:56:40] INFO [diffusion/psilogic] lr=1.0e-03 -> val_loss=0.0268  <-- best
+[10:56:40] INFO [diffusion/psilogic/seed0] lr=3.16e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=3.44M | 500 steps
+[10:57:15] INFO [diffusion/psilogic] lr=3.2e-03 -> val_loss=0.9337
+[10:57:15] INFO [diffusion/psilogic/seed0] lr=1.00e-02 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=3.44M | 500 steps
+[10:57:50] INFO [diffusion/psilogic] lr=1.0e-02 -> val_loss=0.9870
+[10:57:50] INFO [diffusion/psilogic] selected lr=1.00e-03 (val_loss=0.0268)
+[10:57:50] INFO [diffusion/adam/seed0] lr=1.00e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=3.44M | 2000 steps
+[10:59:39] INFO [diffusion/adamw/seed0] lr=1.00e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=3.44M | 2000 steps
+[11:01:31] INFO [diffusion/lion/seed0] lr=1.00e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=3.44M | 2000 steps
+[11:03:14] INFO [diffusion/psilogic/seed0] lr=1.00e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=3.44M | 2000 steps
+[11:06:17] INFO [diffusion/adam/seed1] lr=1.00e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=3.44M | 2000 steps
+[11:08:06] INFO [diffusion/adamw/seed1] lr=1.00e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=3.44M | 2000 steps
+[11:09:53] INFO [diffusion/lion/seed1] lr=1.00e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=3.44M | 2000 steps
+[11:11:41] INFO [diffusion/psilogic/seed1] lr=1.00e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=3.44M | 2000 steps
+[11:14:42] INFO [diffusion/adam/seed2] lr=1.00e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Adam params=3.44M | 2000 steps
+[11:16:31] INFO [diffusion/adamw/seed2] lr=1.00e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | AdamW params=3.44M | 2000 steps
+[11:18:22] INFO [diffusion/lion/seed2] lr=1.00e-04 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | Lion params=3.44M | 2000 steps
+[11:20:11] INFO [diffusion/psilogic/seed2] lr=1.00e-03 | GPU #0: NVIDIA H100 80GB HBM3 (79.2 GB VRAM) | PsiLogic params=3.44M | 2000 steps
+[11:23:21] INFO Wrote plot /workspace/results/full/plots/diffusion_train_peak_vram_mb.png
+[11:23:21] INFO Wrote plot /workspace/results/full/plots/diffusion_train_step_time_s.png
+[11:23:21] INFO Wrote plot /workspace/results/full/plots/diffusion_train_throughput_ex_s.png
+[11:23:21] INFO Wrote plot /workspace/results/full/plots/diffusion_train_train_loss.png
+[11:23:21] INFO Wrote plot /workspace/results/full/plots/nlp_train_peak_vram_mb.png
+[11:23:21] INFO Wrote plot /workspace/results/full/plots/nlp_train_step_time_s.png
+[11:23:21] INFO Wrote plot /workspace/results/full/plots/nlp_train_throughput_ex_s.png
+[11:23:21] INFO Wrote plot /workspace/results/full/plots/nlp_train_train_loss.png
+[11:23:21] INFO Wrote plot /workspace/results/full/plots/resnet_train_peak_vram_mb.png
+[11:23:21] INFO Wrote plot /workspace/results/full/plots/resnet_train_step_time_s.png
+[11:23:21] INFO Wrote plot /workspace/results/full/plots/resnet_train_throughput_ex_s.png
+[11:23:21] INFO Wrote plot /workspace/results/full/plots/resnet_train_train_loss.png
+[11:23:21] INFO Wrote plot /workspace/results/full/plots/vit_train_peak_vram_mb.png
+[11:23:21] INFO Wrote plot /workspace/results/full/plots/vit_train_step_time_s.png
+[11:23:21] INFO Wrote plot /workspace/results/full/plots/vit_train_throughput_ex_s.png
+[11:23:21] INFO Wrote plot /workspace/results/full/plots/vit_train_train_loss.png
+[11:23:22] INFO Wrote plot /workspace/results/full/plots/diffusion_val_val_loss.png
+[11:23:22] INFO Wrote plot /workspace/results/full/plots/nlp_val_perplexity.png
+[11:23:22] INFO Wrote plot /workspace/results/full/plots/nlp_val_val_loss.png
+[11:23:22] INFO Wrote plot /workspace/results/full/plots/resnet_val_val_acc.png
+[11:23:22] INFO Wrote plot /workspace/results/full/plots/resnet_val_val_loss.png
+[11:23:22] INFO Wrote plot /workspace/results/full/plots/vit_val_val_acc.png
+[11:23:22] INFO Wrote plot /workspace/results/full/plots/vit_val_val_loss.png
+[11:23:22] INFO Benchmark complete. Results in /workspace/results/full
+root@fc1bef931619:/workspace# python -m fairbench.analysis --output-dir /workspace/results/full --metric val_acc --higher-better
+\begin{table}[t]
+\centering
+\caption{Final val acc (mean $\pm$ std over seeds). Best per arena in \textbf{bold}; stars mark psilogic significance (\textsuperscript{*}$p<0.05$, \textsuperscript{**}$p<0.01$, \textsuperscript{***}$p<0.001$).}
+\label{tab:val_acc}
+\begin{tabular}{lcccc}
+\toprule
+Arena & Adam & Adamw & Lion & Psilogic \\
+\midrule
+resnet & 0.172 $\pm$ 0.004 & 0.219 $\pm$ 0.005 & 0.205 $\pm$ 0.007 & \textbf{0.222 $\pm$ 0.001\textsuperscript{**}} \\
+vit & 0.079 $\pm$ 0.003 & 0.223 $\pm$ 0.002 & 0.213 $\pm$ 0.002 & \textbf{0.244 $\pm$ 0.006\textsuperscript{***}} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+root@fc1bef931619:/workspace# python -m fairbench.analysis --output-dir /workspace/results/full --metric val_acc --higher-better
+\begin{table}[t]
+\centering
+\caption{Final val acc (mean $\pm$ std over seeds). Best per arena in \textbf{bold}; stars mark psilogic significance (\textsuperscript{*}$p<0.05$, \textsuperscript{**}$p<0.01$, \textsuperscript{***}$p<0.001$).}
+\label{tab:val_acc}
+\begin{tabular}{lcccc}
+\toprule
+Arena & Adam & Adamw & Lion & Psilogic \\
+\midrule
+resnet & 0.172 $\pm$ 0.004 & 0.219 $\pm$ 0.005 & 0.205 $\pm$ 0.007 & \textbf{0.222 $\pm$ 0.001\textsuperscript{**}} \\
+vit & 0.079 $\pm$ 0.003 & 0.223 $\pm$ 0.002 & 0.213 $\pm$ 0.002 & \textbf{0.244 $\pm$ 0.006\textsuperscript{***}} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+root@fc1bef931619:/workspace# 
