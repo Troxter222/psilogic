@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **FairBench** — publication-grade cross-domain benchmark harness
+  (`benchmark/fairbench/`): 4 arenas (NLP, ViT, ResNet, Diffusion) × 4 optimizers
+  (Adam, AdamW, Lion, PsiLogic) with per-optimizer LR sweep, identical init per seed,
+  Welch *t*-test, VRAM/step-time profiling, and LaTeX table export.
+- **FairBench H100 results** — committed at `benchmark/results/full/`. PsiLogic wins
+  NLP (PPL 7.79), ViT (acc 0.244), ResNet vs Adam; ties AdamW on ResNet/Diffusion.
+  Documented in README, PAPER, logs.md. Legacy results moved to `OLD_RESULTS.md`.
+- **`benchmark/logs.txt`** — full raw terminal log from the H100 reference run.
+
+### Changed
+
+- Replaced legacy `benchmark/run_benchmark.py` / `run_all.py` scripts with FairBench.
+- CI lint/format now covers `benchmark/fairbench/` (ruff clean).
+
+### Removed
+
+- Legacy benchmark scripts (`run_benchmark.py`, `run_all.py`, `gc_agc_ablation.py`,
+  `mirror_ablation.py`, `imagenet/train_imagenet.py`) — superseded by FairBench.
+
 ## [0.4.0] — 2026-06
 
 ### Added
