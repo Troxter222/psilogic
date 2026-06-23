@@ -20,3 +20,9 @@ htmlcov/
 
 # FairBench dataset cache (~2 GB downloads)
 benchmark/data/
+
+# LaTeX / arXiv build artifacts
+.tectonic-cache/
+arxiv/paper.pdf
+psilogic-arxiv.pdf
+tools/tectonic/
