@@ -15,7 +15,7 @@ timm>=0.9.0              # Arena 2: vit_tiny_patch16_224
 datasets>=2.14.0         # Arena 1: faster/reliable TinyStories streaming
 
 # Statistics & plotting (recommended; pure-Python fallbacks exist)
-scipy>=1.10              # exact Welch t-test p-values
+scipy>=1.15.3              # exact Welch t-test p-values
 pandas>=2.0              # CSV analysis / LaTeX tables
 matplotlib>=3.7          # learning-curve plots with std bands
 
