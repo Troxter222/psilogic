@@ -21,7 +21,7 @@ matplotlib>=3.7          # learning-curve plots with std bands
 
 # External logging (optional)
 tensorboard>=2.13
-wandb>=0.16
+wandb>=0.28.0
 
 # Optional metrics
 torchmetrics>=1.0        # Arena 4: FID (only if --compute-fid is enabled)
