@@ -26,3 +26,19 @@ benchmark/data/
 arxiv/paper.pdf
 psilogic-arxiv.pdf
 tools/tectonic/
+
+# arXiv / release bundles
+*.tar.gz
+*.zip
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Profiling
+*.prof
+*.nsys-rep
