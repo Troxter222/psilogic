@@ -58,14 +58,14 @@
 
 \begin{abstract}
 Adaptive optimizers such as Adam and AdamW apply the same update rule regardless of
-whether training is in a chaotic early phase or near convergence. I introduce
+whether training is in a chaotic early phase or near convergence. We introduce
 \textbf{PsiLogic} ($\Psi$Logic), an optimizer that augments Adam with a \emph{dynamic Active Cancellation
 Term} gated by a dual exponential moving average (EMA) of scale-normalized gradient norms.
 The resulting \emph{chaos detector} strengthens damping when gradient statistics are unstable
 and fades to zero as training stabilizes, providing an implicit warmup without a hand-tuned
 schedule.
 
-I evaluate PsiLogic against Adam, AdamW, and Lion using \textbf{FairBench}---a reproducible
+We evaluate PsiLogic against Adam, AdamW, and Lion using \textbf{FairBench}---a reproducible
 benchmark protocol with per-optimizer learning-rate sweeps, identical initialization per seed,
 and Welch $t$-tests. On an NVIDIA H100 80GB reference run (4 arenas, 3 seeds, 2000 steps,
 bf16 AMP), PsiLogic achieves the best validation metric in \textbf{three of four arenas}: NLP
@@ -77,7 +77,7 @@ tie without significance at three seeds ($p = 0.44$). Peak GPU memory is compara
 optimizers; PsiLogic incurs \textbf{1.2--1.8$\times$} wall-clock overhead on transformer-heavy arenas
 (implementation-bound; Section~\ref{sec:limitations}).
 
-I release an open-source PyTorch implementation, the full FairBench harness, and all raw
+We release an open-source PyTorch implementation, the full FairBench harness, and all raw
 CSV outputs to support independent verification.
 
 \medskip
@@ -92,7 +92,7 @@ practice, yet their corrective signal does not adapt to \emph{how confused the m
 At initialization, gradients are large and noisy; near convergence, they are small and stable.
 Standard Adam treats both regimes with structurally similar updates.
 
-I propose \textbf{PsiLogic}, which adds a chaos-conditioned damping term to the Adam update.
+We propose \textbf{PsiLogic}, which adds a chaos-conditioned damping term to the Adam update.
 The term is strongest when a dual EMA of normalized gradient norms signals instability, and
 vanishes automatically as training settles. PsiLogic is designed as a drop-in replacement
 for \texttt{torch.optim.Adam} with optional task presets
@@ -109,7 +109,7 @@ for \texttt{torch.optim.Adam} with optional task presets
     with explicit reporting of non-significant and negative results.
 \end{enumerate}
 
-I do \textbf{not} claim universal dominance over AdamW or Lion. I report limitations---including
+We do \textbf{not} claim universal dominance over AdamW or Lion. We report limitations---including
 step-time overhead and ties on diffusion and ResNet-vs-AdamW---explicitly.
 
 \section{Related Work}
@@ -160,7 +160,7 @@ PsiLogic operates on parameter groups indexed by $k$, each with learning rate $\
 $\lambda$, chaos gain $\gamma$, and a group-specific \textbf{chaos amplification factor}
 $P_k \ge 0$ (implementation name \texttt{p\_ext}, default $1.0$). $P_k$ lets presets assign
 stronger cancellation to sensitive groups (e.g., embeddings) and weaker damping to others,
-without changing the global chaos signal. I write $\mathbf{g}_t = \nabla_\theta \mathcal{L}$ for the
+without changing the global chaos signal. We write $\mathbf{g}_t = \nabla_\theta \mathcal{L}$ for the
 gradient at step $t$ and $w_t \in [0,1]$ for the \emph{chaos warmup weight}
 (Section~\ref{sec:warmup}); this avoids overloading $\mathbf{g}_t$ with scalar gains.
 
@@ -174,13 +174,13 @@ Composing the two operations yields
     - \eta \cdot \frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \varepsilon}\,,
   \label{eq:update}
 \end{equation}
-where $\hat{m}_t$ and $\hat{v}_t$ are the usual \emph{bias-corrected} Adam moments (I use $\hat{\cdot}$ consistently below and in Listing~\ref{lst:psilogic}) and $\delta_t$ is the
+where $\hat{m}_t$ and $\hat{v}_t$ are the usual \emph{bias-corrected} Adam moments (we use $\hat{\cdot}$ consistently below and in Listing~\ref{lst:psilogic}) and $\delta_t$ is the
 scalar unified-decay coefficient (Section~\ref{sec:decay}). Listing~\ref{lst:psilogic} spells out the
 same sequence procedurally.
 
 \subsection{Chaos Detector}
 
-Let $\mathrm{gn}_t = \|\mathbf{g}_t\|_2 / \sqrt{\mathrm{numel}}$ be the scale-normalized gradient norm. I maintain:
+Let $\mathrm{gn}_t = \|\mathbf{g}_t\|_2 / \sqrt{\mathrm{numel}}$ be the scale-normalized gradient norm. We maintain:
 \begin{align}
 \mathrm{fast}_t &= 0.90 \cdot \mathrm{fast}_{t-1} + 0.10 \cdot \mathrm{gn}_t \\
 \mathrm{slow}_t &= 0.99 \cdot \mathrm{slow}_{t-1} + 0.01 \cdot \mathrm{gn}_t \\
@@ -208,7 +208,7 @@ The raw cancellation fraction before clamping is
   \tilde{c}_t = s_t \cdot \mathrm{chaos}_t \cdot \eta \cdot \gamma \cdot P_k.
   \label{eq:raw-cancel}
 \end{equation}
-I clamp and add weight decay:
+We clamp and add weight decay:
 \begin{equation}
   \delta_t = \eta \lambda + w_t \cdot \min\!\bigl(\tilde{c}_t,\; c_{\max}\bigr),
   \qquad c_{\max} = \texttt{max\_cancel}
