@@ -6,6 +6,7 @@ from importlib.metadata import version as _pkg_version
 
 from . import debug
 from ._chaos import get_chaos_metrics
+from ._cuda import is_fused_available
 from ._version import __version__ as _fallback_version
 from .convenience import (
     PsiLogicGPT,
@@ -45,6 +46,7 @@ __all__ = [
     "whisper_defaults",
     "glue_defaults",
     "get_chaos_metrics",
+    "is_fused_available",
     "infer_architecture",
     "build_auto_optimizer",
     "debug",

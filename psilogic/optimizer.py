@@ -117,6 +117,8 @@ class PsiLogic(Optimizer):
         gamma_T_max: Total steps for cosine γ schedule; ``0`` disables.
         use_foreach: Batched CUDA ops via ``torch._foreach_*``. Falls back to
             the scalar path automatically when foreach ops are unavailable.
+        use_fused_cuda: Triton fused CUDA step when CUDA and Triton are available.
+            Falls back to ``use_foreach`` then scalar automatically.
         lion_mode: Sign-momentum (Lion) update instead of Adam. Default: ``False``.
         gamma_auto: Auto-reduce γ when the slow EMA signals convergence
             (``slow < 0.1``). Default: ``False``.
@@ -147,6 +149,7 @@ class PsiLogic(Optimizer):
         agc_clip: float = 0.02,
         gamma_T_max: int = 0,
         use_foreach: bool = True,
+        use_fused_cuda: bool = True,
         lion_mode: bool = False,
         gamma_auto: bool = False,
         sync_chaos_ddp: bool = False,
@@ -173,11 +176,13 @@ class PsiLogic(Optimizer):
             "agc_clip": agc_clip,
             "gamma_T_max": gamma_T_max,
             "use_foreach": use_foreach,
+            "use_fused_cuda": use_fused_cuda,
             "lion_mode": lion_mode,
             "gamma_auto": gamma_auto,
         }
         super().__init__(params, defaults)
 
+        self._use_fused_cuda = bool(use_fused_cuda)
         self._sync_chaos_ddp = bool(sync_chaos_ddp)
         self._profile_step_time = bool(profile_step_time)
         self.last_step_time_ms: float = 0.0
@@ -503,27 +508,36 @@ class PsiLogic(Optimizer):
         chaos_gain = effective_warmup(step, gamma_t_max, warmup_cfg)
 
         if chaos_gain > 0.0 and gamma_eff > 0:
+            decay_scales: list[torch.Tensor] = []
+            qd_factors: list[torch.Tensor] = []
+            apply_qd = qd_eff > 0
             for param, raw_grad, state in zip(params_with_grad, raw_grads, states):
                 gamma_param = (
                     auto_gamma(state["slow"], step, gamma_eff) if gamma_auto_on else gamma_eff
                 )
-                self._apply_unified_decay(
-                    param,
-                    raw_grad,
-                    lr=lr,
-                    wd=wd,
-                    gamma_eff=gamma_param,
-                    qd_eff=qd_eff,
-                    p_ext=p_ext,
-                    max_cancel=max_cancel,
-                    slow_t=state["slow"],
-                    fast_t=state["fast"],
+                chaos_contrib, spike_mask = chaos_contribution(
+                    state["slow"],
+                    state["fast"],
                     adaptive_tau=adapt_tau,
                     chaos_tau=group["chaos_tau"],
                     tau_scale=tau_scale,
                     eps=eps,
-                    chaos_gain=chaos_gain,
+                    lr=lr,
+                    gamma_eff=gamma_param,
+                    p_ext=p_ext,
+                    max_cancel=max_cancel,
+                    param_dtype=param.dtype,
                 )
+                total_scalar_decay = lr * wd + chaos_contrib * chaos_gain
+                decay_scales.append(
+                    torch.tensor(1.0 - total_scalar_decay, device=param.device, dtype=param.dtype)
+                )
+                if apply_qd:
+                    qd_contrib = qd_eff * chaos_gain * (1.0 - spike_mask)
+                    qd_factors.append(1.0 - lr * qd_contrib * torch.tanh(raw_grad.abs()))
+            torch._foreach_mul_(params_with_grad, decay_scales)
+            if apply_qd:
+                torch._foreach_mul_(params_with_grad, qd_factors)
         elif wd > 0:
             torch._foreach_mul_(params_with_grad, 1.0 - lr * wd)
 
@@ -539,6 +553,19 @@ class PsiLogic(Optimizer):
             torch._foreach_add_(denoms, eps)
             torch._foreach_addcdiv_(params_with_grad, ms, denoms, value=-step_size)
 
+    def _step_fused_cuda(self, group: dict[str, Any]) -> None:
+        from ._cuda import fused_group_step, is_fused_available
+
+        if not is_fused_available():
+            self._step_foreach(group)
+            return
+        fused_group_step(
+            group,
+            self.state,
+            sync_chaos_ddp=self._sync_chaos_ddp,
+            maybe_sync=self._maybe_sync_chaos,
+        )
+
     @torch.no_grad()
     def step(self, closure: Optional[Any] = None) -> Optional[torch.Tensor]:  # type: ignore[override]
         loss = None
@@ -549,12 +576,20 @@ class PsiLogic(Optimizer):
         t_start = time.perf_counter() if self._profile_step_time else 0.0
 
         for group in self.param_groups:
+            has_cuda_grad = any(p.is_cuda for p in group["params"] if p.grad is not None)
+            use_fused = (
+                self._use_fused_cuda
+                and group.get("use_fused_cuda", self._use_fused_cuda)
+                and has_cuda_grad
+            )
             use_foreach = (
                 group["use_foreach"]
                 and _FOREACH_AVAILABLE
-                and any(p.is_cuda for p in group["params"] if p.grad is not None)
+                and has_cuda_grad
             )
-            if use_foreach:
+            if use_fused:
+                self._step_fused_cuda(group)
+            elif use_foreach:
                 self._step_foreach(group)
             else:
                 self._step_scalar(group)
