@@ -11,6 +11,7 @@ import torch
 import torch.nn as nn
 
 from psilogic import PsiLogic
+from psilogic._cuda import is_fused_available
 
 
 def _median_step_seconds(
@@ -63,9 +64,24 @@ def test_gpu_foreach_overhead():
         lambda p: torch.optim.AdamW(p, lr=1e-3, foreach=True), device="cuda"
     )
     psi = _median_step_seconds(
-        lambda p: PsiLogic(p, lr=1e-3, chaos_warmup=0, use_foreach=True), device="cuda"
+        lambda p: PsiLogic(p, lr=1e-3, chaos_warmup=0, use_foreach=True, use_fused_cuda=False),
+        device="cuda",
     )
-    assert psi < adamw * 2.5, f"PsiLogic GPU step is {psi / adamw:.2f}x AdamW"
+    assert psi < adamw * 2.5, f"PsiLogic foreach GPU step is {psi / adamw:.2f}x AdamW"
+
+
+@pytest.mark.gpu
+@pytest.mark.skipif(not is_fused_available(), reason="Triton fused CUDA path unavailable")
+def test_gpu_fused_overhead():
+    """Fused Triton path should be much closer to AdamW than the foreach path."""
+    adamw = _median_step_seconds(
+        lambda p: torch.optim.AdamW(p, lr=1e-3, foreach=True), device="cuda"
+    )
+    psi = _median_step_seconds(
+        lambda p: PsiLogic(p, lr=1e-3, chaos_warmup=0, use_fused_cuda=True),
+        device="cuda",
+    )
+    assert psi < adamw * 1.25, f"PsiLogic fused GPU step is {psi / adamw:.2f}x AdamW (target <=1.25x)"
 
 
 def test_profile_step_time_records_metrics():
