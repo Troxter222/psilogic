@@ -35,6 +35,7 @@ pip install psilogic
 pip install -e ".[dev]"              # tests + lint
 pip install -e ".[integrations]"       # HuggingFace + Lightning
 pip install -e ".[benchmark]"          # full benchmark harness
+pip install -e ".[cuda]"               # Triton fused GPU step (Linux/Windows + CUDA)
 pip install -e ".[all]"                # everything
 ```
 
@@ -45,6 +46,7 @@ psilogic-pkg/
 ├── psilogic/                  # installable package
 │   ├── optimizer.py           # PsiLogic core optimizer
 │   ├── _chaos.py              # chaos detector, warmup, metrics
+│   ├── _cuda/                 # optional Triton fused CUDA step backend
 │   ├── param_groups.py        # per-architecture param groups (NLP / ViT / GPT)
 │   ├── presets.py             # task-specific default hyperparameters
 │   ├── convenience.py         # PsiLogicNLP/GPT/ViT/Whisper + auto-config
@@ -113,7 +115,12 @@ Archived pre-FairBench results: [`OLD_RESULTS.md`](OLD_RESULTS.md)
 | Diffusion | 3781 / 3768 (Lion) | 168.3 / 95.2 / 91.6 | **1.77×** |
 
 **ΨLogic wins 3 of 4 quality arenas** (NLP perplexity, ViT, ResNet vs Adam).
-Diffusion ties Adam/AdamW (*p* = 0.49). Main overhead: ~1.4–1.8× wall time on ViT/diffusion.
+Diffusion ties Adam/AdamW (*p* = 0.49). Main overhead on **Jun 2026 H100 baseline**:
+~1.4–1.8× wall time on ViT/diffusion (pre-Triton fusion).
+
+**v0.5+:** install `psilogic[cuda]` for the Triton fused step (`use_fused_cuda=True`,
+default when available). Profile locally: `python scripts/profile_optimizer.py`.
+Target: **≤1.25× AdamW** step time on ViT-like models.
 
 ---
 
@@ -124,8 +131,10 @@ the best perplexity on NLP (7.79 vs 8.17 AdamW), the best ViT accuracy (0.244 vs
 *p* < 0.02 vs all baselines), and beats Adam on ResNet (0.222 vs 0.172, *p* = 0.001) while
 numerically tying AdamW (0.222 vs 0.219, *p* = 0.44). Diffusion MSE ties Adam/AdamW within noise.
 
-Trade-off: ΨLogic uses comparable VRAM (±3%) but 1.2–1.8× more wall time, peaking at 1.79× on ViT.
-Kernel fusion is the v0.5 target. Pre-FairBench experiments are in [`OLD_RESULTS.md`](OLD_RESULTS.md).
+Trade-off: ΨLogic uses comparable VRAM (±3%) but 1.2–1.8× more wall time on the
+Jun 2026 H100 baseline, peaking at 1.79× on ViT. **v0.5** adds an optional Triton
+fused CUDA path (`pip install psilogic[cuda]`) to close that gap without changing
+optimizer math. Pre-FairBench experiments are in [`OLD_RESULTS.md`](OLD_RESULTS.md).
 
 ---
 
@@ -179,7 +188,8 @@ optimizer = PsiLogic(
     max_cancel     = 0.05,    # hard clamp on per-step weight shrinkage
     agc_clip       = 0.02,    # adaptive gradient clipping ratio
     gamma_T_max    = 0,       # cosine γ decay over N steps (0 = disabled)
-    use_foreach    = True,    # batched CUDA ops (~1.8x faster)
+    use_foreach    = True,    # batched CUDA foreach fallback
+    use_fused_cuda = True,    # Triton fused step when CUDA+Triton available
 )
 ```
 

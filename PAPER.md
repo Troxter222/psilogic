@@ -17,14 +17,14 @@ https://github.com/Troxter222/psilogic
 ## Abstract
 
 Adaptive optimizers such as Adam and AdamW apply the same update rule regardless of
-whether training is in a chaotic early phase or near convergence. I introduce
+whether training is in a chaotic early phase or near convergence. We introduce
 **PsiLogic** (ΨLogic), an optimizer that augments Adam with a *dynamic Active Cancellation
 Term* gated by a dual exponential moving average (EMA) of scale-normalized gradient norms.
 The resulting *chaos detector* strengthens damping when gradient statistics are unstable
 and fades to zero as training stabilizes, providing an implicit warmup without a hand-tuned
 schedule.
 
-I evaluate PsiLogic against Adam, AdamW, and Lion using **FairBench** — a reproducible
+We evaluate PsiLogic against Adam, AdamW, and Lion using **FairBench** — a reproducible
 benchmark protocol with per-optimizer learning-rate sweeps, identical initialization per seed,
 and Welch *t*-tests. On an NVIDIA H100 80GB reference run (4 arenas, 3 seeds, 2000 steps,
 bf16 AMP), PsiLogic achieves the best validation metric in **three of four arenas**: NLP
@@ -35,7 +35,7 @@ is statistically tied with Adam/AdamW (*p* = 0.49). ResNet accuracy vs AdamW is 
 tie without significance at three seeds (*p* = 0.44). Peak GPU memory is comparable across
 optimizers; PsiLogic incurs **1.2–1.8×** wall-clock overhead on transformer-heavy arenas.
 
-I release an open-source PyTorch implementation, the full FairBench harness, and all raw
+We release an open-source PyTorch implementation, the full FairBench harness, and all raw
 CSV outputs to support independent verification.
 
 **Keywords:** optimization, Adam, adaptive learning rate, deep learning, reproducibility
@@ -50,7 +50,7 @@ practice, yet their corrective signal does not adapt to *how confused the model 
 At initialization, gradients are large and noisy; near convergence, they are small and stable.
 Standard Adam treats both regimes with structurally similar updates.
 
-I propose **PsiLogic**, which adds a chaos-conditioned damping term to the Adam update.
+We propose **PsiLogic**, which adds a chaos-conditioned damping term to the Adam update.
 The term is strongest when a dual EMA of normalized gradient norms signals instability, and
 vanishes automatically as training settles. PsiLogic is designed as a drop-in replacement
 for `torch.optim.Adam` with optional task presets (`PsiLogicNLP`, `PsiLogicGPT`, `PsiLogicViT`).
@@ -65,7 +65,7 @@ for `torch.optim.Adam` with optional task presets (`PsiLogicNLP`, `PsiLogicGPT`,
    `benchmark/results/full/`, showing competitive or superior quality on NLP, ViT, and ResNet
    with explicit reporting of non-significant and negative results.
 
-I do **not** claim universal dominance over AdamW or Lion. I report limitations — including
+We do **not** claim universal dominance over AdamW or Lion. We report limitations — including
 step-time overhead and ties on diffusion and ResNet-vs-AdamW — explicitly.
 
 ---
@@ -108,7 +108,7 @@ through a unified per-step shrinkage coefficient (Section 3.3).
 
 ### 3.2 Chaos Detector
 
-Let `gn_t = ‖∇_t‖₂ / √(numel)` be the scale-normalized gradient norm. I maintain:
+Let `gn_t = ‖∇_t‖₂ / √(numel)` be the scale-normalized gradient norm. We maintain:
 
 ```
 fast_t = 0.90 · fast_{t-1} + 0.10 · gn_t     [τ ≈ 10 steps]
@@ -271,7 +271,9 @@ similar in spirit to LR warmup but driven by online gradient statistics.
 1. **Small seed count** — 3 seeds; some comparisons (ResNet vs AdamW, diffusion vs AdamW) are
    not statistically significant.
 2. **Short training budget** — 2000 steps per arena; not ImageNet- or LLM-scale.
-3. **Step-time overhead** — up to 1.79× vs AdamW on ViT; kernel fusion not yet implemented.
+3. **Step-time overhead** — up to 1.79× vs AdamW on ViT in the Jun 2026 H100
+   baseline; **v0.5+** adds optional Triton fusion (`psilogic[cuda]`, `use_fused_cuda=True`)
+   targeting ≤1.25× without changing optimizer math. Re-run FairBench on GPU to refresh Fig. 4.
 4. **Diffusion** — no quality win over Adam/AdamW at this budget.
 5. **No convergence proof** — empirical stability only.
 6. **Independent evaluation** — results have not yet been replicated by external groups.
