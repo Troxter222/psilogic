@@ -6,26 +6,34 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-07
+
 ### Added
 
-- **FairBench** — publication-grade cross-domain benchmark harness
-  (`benchmark/fairbench/`): 4 arenas (NLP, ViT, ResNet, Diffusion) × 4 optimizers
-  (Adam, AdamW, Lion, PsiLogic) with per-optimizer LR sweep, identical init per seed,
-  Welch *t*-test, VRAM/step-time profiling, and LaTeX table export.
-- **FairBench H100 results** — committed at `benchmark/results/full/`. PsiLogic wins
-  NLP (PPL 7.79), ViT (acc 0.244), ResNet vs Adam; ties AdamW on ResNet/Diffusion.
-  Documented in README, PAPER, logs.md. Legacy results moved to `OLD_RESULTS.md`.
-- **`benchmark/logs.txt`** — full raw terminal log from the H100 reference run.
+- **Triton fused CUDA step** (`psilogic/_cuda/`) — optional backend that fuses
+  grad centralization, Adam moments, chaos decay, and the param update into
+  a small number of GPU kernels per tensor. Enabled by default when CUDA and
+  Triton are available (`use_fused_cuda=True`); falls back to foreach then
+  scalar automatically.
+- **`pip install psilogic[cuda]`** — pulls Triton on Linux/Windows CUDA builds.
+- **`tests/test_numerical_parity.py`** — verifies foreach and fused backends
+  match the scalar reference path (fp32/bf16, all major hyperparameter flags).
+- **`scripts/profile_optimizer.py`** — ViT-like step-time profiler and optional
+  `torch.profiler` breakdown vs AdamW.
 
 ### Changed
 
-- Replaced legacy `benchmark/run_benchmark.py` / `run_all.py` scripts with FairBench.
-- CI lint/format now covers `benchmark/fairbench/` (ruff clean).
+- **Foreach chaos decay** — scalar shrinkage and quantum decay now use batched
+  `torch._foreach_mul_` instead of a per-parameter Python loop (same math).
+- Step dispatch order is now **fused → foreach → scalar**.
 
-### Removed
+### Performance
 
-- Legacy benchmark scripts (`run_benchmark.py`, `run_all.py`, `gc_agc_ablation.py`,
-  `mirror_ablation.py`, `imagenet/train_imagenet.py`) — superseded by FairBench.
+- FairBench H100 numbers in README remain the pre-fusion baseline (Jun 2026).
+  Re-run on GPU to refresh overhead after installing `[cuda]`:
+  `python scripts/profile_optimizer.py` or `python -m fairbench --arena vit ...`
+- Target with fused path: **≤1.25× AdamW** step time on ViT-like models
+  (validated by `tests/test_step_overhead.py::test_gpu_fused_overhead` on CI GPU).
 
 ## [0.4.0] — 2026-06
 
