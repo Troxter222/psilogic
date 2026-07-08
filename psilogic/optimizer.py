@@ -582,11 +582,7 @@ class PsiLogic(Optimizer):
                 and group.get("use_fused_cuda", self._use_fused_cuda)
                 and has_cuda_grad
             )
-            use_foreach = (
-                group["use_foreach"]
-                and _FOREACH_AVAILABLE
-                and has_cuda_grad
-            )
+            use_foreach = group["use_foreach"] and _FOREACH_AVAILABLE and has_cuda_grad
             if use_fused:
                 self._step_fused_cuda(group)
             elif use_foreach:

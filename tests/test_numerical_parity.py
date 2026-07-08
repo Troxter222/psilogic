@@ -39,7 +39,7 @@ def _assert_state_close(
     for group_ref, group_other in zip(ref.param_groups, other.param_groups):
         for p_ref, p_other in zip(group_ref["params"], group_other["params"]):
             assert torch.allclose(p_ref, p_other, rtol=rtol, atol=atol), (
-                f"param mismatch max={ (p_ref - p_other).abs().max().item() }"
+                f"param mismatch max={(p_ref - p_other).abs().max().item()}"
             )
             s_ref = ref.state[p_ref]
             s_other = other.state[p_other]
@@ -47,7 +47,7 @@ def _assert_state_close(
                 if key not in s_ref:
                     continue
                 assert torch.allclose(s_ref[key], s_other[key], rtol=rtol, atol=atol), (
-                    f"{key} mismatch max={ (s_ref[key] - s_other[key]).abs().max().item() }"
+                    f"{key} mismatch max={(s_ref[key] - s_other[key]).abs().max().item()}"
                 )
             assert s_ref["t"] == s_other["t"]
 
@@ -91,7 +91,9 @@ def _run_parity(
 
     opt_ref = PsiLogic(model_ref.parameters(), use_foreach=False, **kwargs)
     if backend == "foreach":
-        opt_other = PsiLogic(model_other.parameters(), use_foreach=True, use_fused_cuda=False, **kwargs)
+        opt_other = PsiLogic(
+            model_other.parameters(), use_foreach=True, use_fused_cuda=False, **kwargs
+        )
     elif backend == "fused":
         opt_other = PsiLogic(
             model_other.parameters(),
