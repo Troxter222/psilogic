@@ -81,7 +81,9 @@ def test_gpu_fused_overhead():
         lambda p: PsiLogic(p, lr=1e-3, chaos_warmup=0, use_fused_cuda=True),
         device="cuda",
     )
-    assert psi < adamw * 1.25, f"PsiLogic fused GPU step is {psi / adamw:.2f}x AdamW (target <=1.25x)"
+    assert psi < adamw * 1.25, (
+        f"PsiLogic fused GPU step is {psi / adamw:.2f}x AdamW (target <=1.25x)"
+    )
 
 
 def test_profile_step_time_records_metrics():
