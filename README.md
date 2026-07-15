@@ -4,7 +4,7 @@
 
 ### Active Cancellation Optimizer for Deep Neural Networks
 
-[![PyPI version](https://badge.fury.io/py/psilogic.svg)](https://badge.fury.io/py/psilogic)
+[![PyPI version](https://img.shields.io/pypi/v/psilogic.svg?cache=1)](https://pypi.org/project/psilogic/)
 [![CI](https://github.com/Troxter222/psilogic/actions/workflows/ci.yml/badge.svg)](https://github.com/Troxter222/psilogic/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/pypi/pyversions/psilogic)](https://pypi.org/project/psilogic)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
