@@ -345,6 +345,7 @@ class PsiLogic(Optimizer):
         if lion:
             update = (beta1 * state["m"] + (1.0 - beta1) * grad).sign()
             param.add_(update, alpha=-lr)
+            state["m"].mul_(beta2).add_(grad, alpha=1.0 - beta2)
         else:
             bc1 = 1.0 - beta1**step
             bc2 = math.sqrt(1.0 - beta2**step)
@@ -389,8 +390,8 @@ class PsiLogic(Optimizer):
             state["t"] += 1
             step = state["t"]
 
-            state["m"].mul_(beta1).add_(grad, alpha=1.0 - beta1)
             if not lion:
+                state["m"].mul_(beta1).add_(grad, alpha=1.0 - beta1)
                 state["v"].mul_(beta2).addcmul_(grad, grad, value=1.0 - beta2)
 
             update_gradient_norm_ema(
@@ -491,9 +492,9 @@ class PsiLogic(Optimizer):
         ms = [s["m"] for s in states]
         vs = [s["v"] for s in states]
 
-        torch._foreach_mul_(ms, beta1)
-        torch._foreach_add_(ms, grads, alpha=1.0 - beta1)
         if not lion:
+            torch._foreach_mul_(ms, beta1)
+            torch._foreach_add_(ms, grads, alpha=1.0 - beta1)
             torch._foreach_mul_(vs, beta2)
             torch._foreach_addcmul_(vs, grads, grads, value=1.0 - beta2)
 
