@@ -275,6 +275,28 @@ See [`benchmark/README.md`](benchmark/README.md) for all arenas, flags, and data
 
 ---
 
+## Citation
+
+If you find our work or code useful in your research, please cite our paper:
+
+```bibtex
+@misc{sultonov2026psilogic,
+      title={PsiLogic: Chaos-Aware Active Cancellation for Adam with a Fair Cross-Domain Benchmark}, 
+      author={Ali Sultonov},
+      year={2026},
+      eprint={2607.16268},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2607.16268}, 
+}
+```
+
+Alternatively, you can cite it using the following text format:
+
+> Sultonov, A. (2026). *PsiLogic: Chaos-Aware Active Cancellation for Adam with a Fair Cross-Domain Benchmark*. arXiv preprint arXiv:2607.16268.
+
+---
+
 ## License
 
 MIT © 2026 Ali (Troxter222)
