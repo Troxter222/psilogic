@@ -16,7 +16,7 @@ datasets>=2.14.0         # Arena 1: faster/reliable TinyStories streaming
 
 # Statistics & plotting (recommended; pure-Python fallbacks exist)
 scipy>=1.15.3              # exact Welch t-test p-values
-pandas>=2.0              # CSV analysis / LaTeX tables
+pandas>=2.3.3              # CSV analysis / LaTeX tables
 matplotlib>=3.10.9          # learning-curve plots with std bands
 
 # External logging (optional)
