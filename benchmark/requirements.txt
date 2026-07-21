@@ -20,7 +20,7 @@ pandas>=2.0              # CSV analysis / LaTeX tables
 matplotlib>=3.7          # learning-curve plots with std bands
 
 # External logging (optional)
-tensorboard>=2.13
+tensorboard>=2.21.0
 wandb>=0.28.1
 
 # Optional metrics
