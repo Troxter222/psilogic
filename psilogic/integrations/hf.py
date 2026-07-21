@@ -74,7 +74,7 @@ def create_psilogic_optimizer(
         if total_steps <= 0:
             total_steps = int(getattr(args, "max_steps", 0) or 0)
         args_wd = getattr(args, "weight_decay", None)
-        if args_wd is not None and args_wd > 0:
+        if args_wd is not None:
             kwargs.setdefault("weight_decay", float(args_wd))
 
     if preset == "auto":
