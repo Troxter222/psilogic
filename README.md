@@ -8,7 +8,7 @@
 [![CI](https://github.com/Troxter222/psilogic/actions/workflows/ci.yml/badge.svg)](https://github.com/Troxter222/psilogic/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/pypi/pyversions/psilogic)](https://pypi.org/project/psilogic)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![arXiv](https://img.shields.io/badge/arXiv-2607.xxxxx-B31B1B.svg)](https://arxiv.org/abs/2607.xxxxx)
+[![arXiv](https://img.shields.io/badge/arXiv-2607.16268-B31B1B.svg)](https://arxiv.org/abs/2607.16268)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18739857.svg)](https://doi.org/10.5281/zenodo.18739857)
 
 ```
