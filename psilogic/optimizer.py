@@ -488,7 +488,6 @@ class PsiLogic(Optimizer):
             state["t"] += 1
             states.append(state)
 
-        step = states[0]["t"]
         ms = [s["m"] for s in states]
         vs = [s["v"] for s in states]
 
@@ -501,21 +500,24 @@ class PsiLogic(Optimizer):
         g_norms = torch._foreach_norm(grads)
         for gn, state, grad in zip(g_norms, states, grads):
             update_gradient_norm_ema(
-                gn, grad.numel(), step, state["fast"], state["slow"], state["gn_avg"], eps
+                gn, grad.numel(), state["t"], state["fast"], state["slow"], state["gn_avg"], eps
             )
         self._maybe_sync_chaos(states)
 
-        gamma_eff, qd_eff = effective_gamma_and_qd(step, gamma_t_max, gamma, qd)
-        chaos_gain = effective_warmup(step, gamma_t_max, warmup_cfg)
+        # Compute parameter-wise decay scales and quantum decay factors
+        decay_scales: list[torch.Tensor] = []
+        qd_factors: list[torch.Tensor] = []
+        has_chaos_or_wd = False
+        has_qd = False
 
-        if chaos_gain > 0.0 and gamma_eff > 0:
-            decay_scales: list[torch.Tensor] = []
-            qd_factors: list[torch.Tensor] = []
-            apply_qd = qd_eff > 0
-            for param, raw_grad, state in zip(params_with_grad, raw_grads, states):
-                gamma_param = (
-                    auto_gamma(state["slow"], step, gamma_eff) if gamma_auto_on else gamma_eff
-                )
+        for param, raw_grad, state in zip(params_with_grad, raw_grads, states):
+            p_step = state["t"]
+            p_gamma_eff, p_qd_eff = effective_gamma_and_qd(p_step, gamma_t_max, gamma, qd)
+            if gamma_auto_on:
+                p_gamma_eff = auto_gamma(state["slow"], p_step, p_gamma_eff)
+            p_chaos_gain = effective_warmup(p_step, gamma_t_max, warmup_cfg)
+
+            if p_chaos_gain > 0.0 and p_gamma_eff > 0:
                 chaos_contrib, spike_mask = chaos_contribution(
                     state["slow"],
                     state["fast"],
@@ -524,35 +526,53 @@ class PsiLogic(Optimizer):
                     tau_scale=tau_scale,
                     eps=eps,
                     lr=lr,
-                    gamma_eff=gamma_param,
+                    gamma_eff=p_gamma_eff,
                     p_ext=p_ext,
                     max_cancel=max_cancel,
                     param_dtype=param.dtype,
                 )
-                total_scalar_decay = lr * wd + chaos_contrib * chaos_gain
+                total_scalar_decay = lr * wd + chaos_contrib * p_chaos_gain
                 decay_scales.append(
                     torch.tensor(1.0 - total_scalar_decay, device=param.device, dtype=param.dtype)
                 )
-                if apply_qd:
-                    qd_contrib = qd_eff * chaos_gain * (1.0 - spike_mask)
+                has_chaos_or_wd = True
+
+                if p_qd_eff > 0:
+                    qd_contrib = p_qd_eff * p_chaos_gain * (1.0 - spike_mask)
                     qd_factors.append(1.0 - lr * qd_contrib * torch.tanh(raw_grad.abs()))
+                    has_qd = True
+                else:
+                    qd_factors.append(torch.tensor(1.0, device=param.device, dtype=param.dtype))
+            else:
+                decay_scales.append(
+                    torch.tensor(1.0 - lr * wd, device=param.device, dtype=param.dtype)
+                )
+                if wd > 0:
+                    has_chaos_or_wd = True
+                qd_factors.append(torch.tensor(1.0, device=param.device, dtype=param.dtype))
+
+        if has_chaos_or_wd:
             torch._foreach_mul_(params_with_grad, decay_scales)
-            if apply_qd:
-                torch._foreach_mul_(params_with_grad, qd_factors)
-        elif wd > 0:
-            torch._foreach_mul_(params_with_grad, 1.0 - lr * wd)
+        if has_qd:
+            torch._foreach_mul_(params_with_grad, qd_factors)
 
         if lion:
             for param, momentum, grad in zip(params_with_grad, ms, grads):
                 update = (beta1 * momentum + (1.0 - beta1) * grad).sign()
                 param.add_(update, alpha=-lr)
         else:
-            bc1 = 1.0 - beta1**step
-            bc2 = math.sqrt(1.0 - beta2**step)
-            step_size = lr * bc2 / bc1
-            denoms = torch._foreach_sqrt(vs)
-            torch._foreach_add_(denoms, eps)
-            torch._foreach_addcdiv_(params_with_grad, ms, denoms, value=-step_size)
+            if lr > 0.0:
+                # Calculate bias corrections and negative step sizes per parameter
+                bc1_list = [1.0 - beta1 ** state["t"] for state in states]
+                bc2_sqrt_list = [math.sqrt(1.0 - beta2 ** state["t"]) for state in states]
+                step_sizes_neg = [
+                    -lr * bc2_sqrt / bc1 for bc1, bc2_sqrt in zip(bc1_list, bc2_sqrt_list)
+                ]
+
+                denoms = torch._foreach_sqrt(vs)
+                torch._foreach_add_(denoms, eps)
+                torch._foreach_div_(denoms, step_sizes_neg)
+                torch._foreach_addcdiv_(params_with_grad, ms, denoms, value=1.0)
 
     def _step_fused_cuda(self, group: dict[str, Any]) -> None:
         from ._cuda import fused_group_step, is_fused_available
