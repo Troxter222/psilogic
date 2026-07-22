@@ -305,7 +305,9 @@ def paired_ttest(a: Sequence[float], b: Sequence[float], alpha: float = 0.05) ->
     return PairedTTestResult(t, p, df, dz, n, p < alpha)
 
 
-def holm_bonferroni(pvalues: Sequence[float], alpha: float = 0.05) -> tuple[list[float], list[bool]]:
+def holm_bonferroni(
+    pvalues: Sequence[float], alpha: float = 0.05
+) -> tuple[list[float], list[bool]]:
     """Holm-Bonferroni step-down correction for a family of p-values.
 
     Returns ``(adjusted_pvalues, reject)`` in the same order as ``pvalues``.
