@@ -34,9 +34,10 @@ from .metrics import (
     StepTimer,
     aggregate,
     cuda_sync,
+    holm_bonferroni,
+    paired_ttest,
     peak_vram_mb,
     reset_peak_vram,
-    welch_ttest,
 )
 from .optimizers import build_optimizer
 from .probe import psilogic_chaos_metrics
@@ -489,7 +490,14 @@ class BenchmarkRunner:
         best_lrs = self._resolve_lrs(arena, engine, sweep_init, sweep_seed)
 
         # ---- Stage 2: multi-seed evaluation with identical per-seed init ----
-        per_opt_finals: dict[str, dict[str, list[float]]] = {opt: {} for opt in self.cfg.optimizers}
+        # Keyed by seed (not appended positionally) so that a run missing a
+        # metric key (e.g. a failed run whose fallback _evaluate() only
+        # returns the primary metric) can't silently shift later seeds out
+        # of alignment between optimizers -- the paired significance test
+        # below depends on a[i]/b[i] being the *same seed* for every i.
+        per_opt_finals: dict[str, dict[str, dict[int, float]]] = {
+            opt: {} for opt in self.cfg.optimizers
+        }
         for seed in self.cfg.seeds:
             set_seed(seed)
             init_state = self._snapshot_init(arena)  # shared by all optimizers
@@ -498,7 +506,7 @@ class BenchmarkRunner:
                 res = self._run_with_oom_retry(engine, arena, optimizer_name, lr, seed, init_state)
                 self._record_run(res)
                 for metric, value in res.final_metrics.items():
-                    per_opt_finals[optimizer_name].setdefault(metric, []).append(value)
+                    per_opt_finals[optimizer_name].setdefault(metric, {})[seed] = value
 
         self._record_statistics(arena_name, per_opt_finals, best_lrs)
 
@@ -678,10 +686,10 @@ class BenchmarkRunner:
     def _record_statistics(
         self,
         arena_name: str,
-        per_opt_finals: dict[str, dict[str, list[float]]],
+        per_opt_finals: dict[str, dict[str, dict[int, float]]],
         best_lrs: dict[str, float],
     ) -> None:
-        """Compute Mean+/-Std per optimizer and t-tests vs the reference optimizer."""
+        """Compute Mean+/-Std per optimizer and paired, corrected significance tests."""
         # Aggregate (Mean +/- Std) over seeds.
         all_metrics = sorted({m for d in per_opt_finals.values() for m in d})
         for optimizer_name, metric_map in per_opt_finals.items():
@@ -693,24 +701,35 @@ class BenchmarkRunner:
                 "device": self.device_info.get("device"),
             }
             for metric in all_metrics:
-                agg: Aggregate = aggregate(metric_map.get(metric, []))
+                agg: Aggregate = aggregate(list(metric_map.get(metric, {}).values()))
                 row[f"{metric}_mean"] = agg.mean
                 row[f"{metric}_std"] = agg.std
                 row[f"{metric}_n"] = agg.n
             self.aggregate_csv.append(row)
 
         # Significance: reference optimizer vs each baseline, per metric.
+        # Runs share seeds/inits across optimizers (see run_arena), so each
+        # comparison is paired on seed rather than treated as two
+        # independent samples. All comparisons for this arena form one
+        # family and get a single Holm-Bonferroni correction, since the
+        # table is read row-by-row as individual pairwise claims.
         ref = REFERENCE_OPTIMIZER
         if ref not in per_opt_finals:
             return
+
+        pending: list[dict[str, Any]] = []
+        raw_pvalues: list[float] = []
         for optimizer_name, metric_map in per_opt_finals.items():
             if optimizer_name == ref:
                 continue
             for metric in all_metrics:
-                a = per_opt_finals[ref].get(metric, [])
-                b = metric_map.get(metric, [])
-                tt = welch_ttest(a, b)
-                self.stats_csv.append(
+                a_by_seed = per_opt_finals[ref].get(metric, {})
+                b_by_seed = metric_map.get(metric, {})
+                common_seeds = sorted(set(a_by_seed) & set(b_by_seed))
+                a = [a_by_seed[s] for s in common_seeds]
+                b = [b_by_seed[s] for s in common_seeds]
+                tt = paired_ttest(a, b)
+                pending.append(
                     {
                         "arena": arena_name,
                         "metric": metric,
@@ -718,13 +737,21 @@ class BenchmarkRunner:
                         "baseline": optimizer_name,
                         f"{ref}_mean": aggregate(a).mean,
                         f"{optimizer_name}_mean": aggregate(b).mean,
+                        "n_pairs": tt.n_pairs,
                         "t_stat": tt.t_stat,
                         "p_value": tt.p_value,
                         "df": tt.df,
-                        "cohens_d": tt.cohens_d,
-                        "significant_p<0.05": tt.significant,
+                        "cohens_dz": tt.cohens_dz,
+                        "significant_raw_p<0.05": tt.significant,
                     }
                 )
+                raw_pvalues.append(tt.p_value)
+
+        adjusted, reject = holm_bonferroni(raw_pvalues, alpha=0.05)
+        for row, p_holm, sig_holm in zip(pending, adjusted, reject):
+            row["p_value_holm"] = p_holm
+            row["significant_holm_p<0.05"] = sig_holm
+            self.stats_csv.append(row)
 
     def _finalize_plots(self) -> None:
         if not self.cfg.logging.plots:
