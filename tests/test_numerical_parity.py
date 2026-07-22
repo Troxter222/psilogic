@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import copy
-import os
 import math
+import os
 from typing import Any, Callable
 
 import pytest
