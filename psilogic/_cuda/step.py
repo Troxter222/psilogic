@@ -14,7 +14,7 @@ from psilogic._chaos import (
     effective_warmup,
     update_gradient_norm_ema,
 )
-from psilogic.optimizer import _apply_agc, _init_param_state
+from psilogic.optimizer import _apply_agc, _centralize_grad, _init_param_state
 
 from . import kernels
 
@@ -65,28 +65,34 @@ def fused_param_step(
     state["t"] += 1
     step = state["t"]
 
+    raw_grad = raw_grad.contiguous()
     grad = grad.contiguous()
+    if gc:
+        # Use the scalar reference reduction here.  Triton's atomic row sums
+        # are order-dependent and can move the chaos EMA enough to alter later
+        # cancellation decisions, particularly for long FP32 runs.
+        grad = _centralize_grad(grad).contiguous()
     raw_grad_buf = torch.empty_like(grad)
     n_leaders, elems_per_leader = _leader_layout(param)
     leader_sum = torch.zeros(n_leaders, device=param.device, dtype=torch.float32)
-    if gc and param.dim() > 1 and elems_per_leader > 1:
-        leader_sum = kernels.launch_leader_sums(grad, n_leaders, elems_per_leader)
 
     kernels.launch_centralize_moment(
         grad,
+        raw_grad,
         raw_grad_buf,
         state["m"],
         state["v"],
-        grad_centralize=gc,
+        grad_centralize=False,
         beta1=beta1,
         beta2=beta2,
         update_variance=not lion,
+        update_momentum=not lion,
         n_leaders=n_leaders,
         elems_per_leader=elems_per_leader,
         leader_sum=leader_sum,
     )
 
-    g_norm = torch.linalg.vector_norm(grad)
+    g_norm = grad.norm()
     update_gradient_norm_ema(
         g_norm,
         grad.numel(),
@@ -151,6 +157,7 @@ def fused_param_step(
         apply_quantum=apply_quantum,
         lion=lion,
         beta1=beta1,
+        beta2=beta2,
     )
 
 

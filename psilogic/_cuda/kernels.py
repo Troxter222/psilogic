@@ -38,6 +38,7 @@ if _HAS_TRITON:
     @triton.jit
     def _centralize_moment_kernel(
         g_ptr,
+        raw_input_ptr,
         raw_g_ptr,
         m_ptr,
         v_ptr,
@@ -49,6 +50,7 @@ if _HAS_TRITON:
         one_minus_beta2,
         grad_centralize,
         update_variance,
+        update_momentum,
         n_elements,
         elems_per_leader,
         n_leaders,
@@ -58,10 +60,11 @@ if _HAS_TRITON:
         offsets = pid * BLOCK + tl.arange(0, BLOCK)
         mask = offsets < n_elements
 
+        raw_g = tl.load(raw_input_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
         g = tl.load(g_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
         m = tl.load(m_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
 
-        tl.store(raw_g_ptr + offsets, g, mask=mask)
+        tl.store(raw_g_ptr + offsets, raw_g, mask=mask)
 
         if grad_centralize:
             leader = offsets // elems_per_leader
@@ -69,7 +72,8 @@ if _HAS_TRITON:
             g = g - lsum / leader_count
 
         new_m = beta1 * m + one_minus_beta1 * g
-        tl.store(m_ptr + offsets, new_m, mask=mask)
+        if update_momentum:
+            tl.store(m_ptr + offsets, new_m, mask=mask)
         tl.store(g_ptr + offsets, g, mask=mask)
 
         if update_variance:
@@ -94,6 +98,8 @@ if _HAS_TRITON:
         lion,
         beta1,
         one_minus_beta1,
+        beta2,
+        one_minus_beta2,
         n_elements,
         BLOCK: tl.constexpr,
     ):
@@ -111,19 +117,24 @@ if _HAS_TRITON:
 
         if apply_quantum:
             raw_g = tl.load(raw_g_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
-            p = p * (1.0 - lr * qd_contrib * tl.tanh(tl.abs(raw_g)))
+            # Triton does not expose ``tl.tanh`` in all supported versions.
+            # For non-negative x, tanh(x) == 2 * sigmoid(2x) - 1.
+            p = p * (1.0 - lr * qd_contrib * (2.0 * tl.sigmoid(2.0 * tl.abs(raw_g)) - 1.0))
 
         if lion:
             g = tl.load(g_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
             update = beta1 * m + one_minus_beta1 * g
             sign = tl.where(update > 0, 1.0, tl.where(update < 0, -1.0, 0.0))
             p = p - lr * sign
+            m = beta2 * m + one_minus_beta2 * g
         else:
             v = tl.load(v_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
             denom = tl.sqrt(v) + eps
-            p = p - step_size * m / denom
+            p = p + (-step_size) * (m / denom)
 
         tl.store(p_ptr + offsets, p, mask=mask)
+        if lion:
+            tl.store(m_ptr + offsets, m, mask=mask)
 
 
 def launch_leader_sums(grad: torch.Tensor, n_leaders: int, elems_per_leader: int) -> torch.Tensor:
@@ -138,6 +149,7 @@ def launch_leader_sums(grad: torch.Tensor, n_leaders: int, elems_per_leader: int
 
 def launch_centralize_moment(
     grad: torch.Tensor,
+    raw_grad_source: torch.Tensor,
     raw_grad: torch.Tensor,
     momentum: torch.Tensor,
     variance: torch.Tensor,
@@ -146,6 +158,7 @@ def launch_centralize_moment(
     beta1: float,
     beta2: float,
     update_variance: bool,
+    update_momentum: bool,
     n_leaders: int,
     elems_per_leader: int,
     leader_sum: torch.Tensor,
@@ -159,6 +172,7 @@ def launch_centralize_moment(
     grid = (triton.cdiv(n, block),)
     _centralize_moment_kernel[grid](
         grad,
+        raw_grad_source,
         raw_grad,
         momentum,
         variance,
@@ -170,6 +184,7 @@ def launch_centralize_moment(
         float(1.0 - beta2),
         grad_centralize and n_leaders > 1 and elems_per_leader > 1,
         update_variance,
+        update_momentum,
         n,
         elems_per_leader,
         n_leaders,
@@ -193,6 +208,7 @@ def launch_decay_adam(
     apply_quantum: bool,
     lion: bool,
     beta1: float,
+    beta2: float,
 ) -> None:
     """Apply chaos/weight decay and Adam or Lion param update."""
     _require_triton()
@@ -217,6 +233,8 @@ def launch_decay_adam(
         lion,
         float(beta1),
         float(1.0 - beta1),
+        float(beta2),
+        float(1.0 - beta2),
         n,
         BLOCK=block,
     )

@@ -462,11 +462,22 @@ class PsiLogic(Optimizer):
         if not params_with_grad:
             return
 
+        # CUDA foreach kernels do not round BF16 elementwise updates in the
+        # same way as the scalar kernels.  The discrepancy compounds across
+        # optimizer steps, so retain strict parity by using the scalar path
+        # for CUDA BF16 groups; FP32 keeps the batched implementation.
+        if any(param.is_cuda and param.dtype == torch.bfloat16 for param in params_with_grad):
+            self._step_scalar(group)
+            return
+
         grads = [p.grad for p in params_with_grad]
 
         if agc > 0.0:
-            p_norms = torch._foreach_norm(params_with_grad)
-            g_norms = torch._foreach_norm(grads)
+            # Match the scalar path's reduction for numerical parity.  The
+            # foreach norm kernel can use a different CUDA reduction order,
+            # which is especially visible in BF16 AGC scale factors.
+            p_norms = [param.norm() for param in params_with_grad]
+            g_norms = [grad.norm() for grad in grads]
             grads = [
                 g * (agc * pn.clamp(min=1e-3) / gn.clamp(min=1e-6)).clamp(max=1.0)
                 for g, pn, gn in zip(grads, p_norms, g_norms)
@@ -497,7 +508,10 @@ class PsiLogic(Optimizer):
             torch._foreach_mul_(vs, beta2)
             torch._foreach_addcmul_(vs, grads, grads, value=1.0 - beta2)
 
-        g_norms = torch._foreach_norm(grads)
+        # Keep the chaos EMA reduction identical to _step_scalar.  Besides
+        # making the backends agree, this prevents a tiny CUDA norm delta
+        # from changing the cancellation gate on later steps.
+        g_norms = [grad.norm() for grad in grads]
         for gn, state, grad in zip(g_norms, states, grads):
             update_gradient_norm_ema(
                 gn, grad.numel(), state["t"], state["fast"], state["slow"], state["gn_avg"], eps
@@ -560,6 +574,7 @@ class PsiLogic(Optimizer):
             for param, momentum, grad in zip(params_with_grad, ms, grads):
                 update = (beta1 * momentum + (1.0 - beta1) * grad).sign()
                 param.add_(update, alpha=-lr)
+                momentum.mul_(beta2).add_(grad, alpha=1.0 - beta2)
         else:
             if lr > 0.0:
                 # Calculate bias corrections and negative step sizes per parameter
@@ -571,8 +586,18 @@ class PsiLogic(Optimizer):
 
                 denoms = torch._foreach_sqrt(vs)
                 torch._foreach_add_(denoms, eps)
-                torch._foreach_div_(denoms, step_sizes_neg)
-                torch._foreach_addcdiv_(params_with_grad, ms, denoms, value=1.0)
+                if len({state["t"] for state in states}) == 1:
+                    # This is the normal dense-training case and preserves
+                    # the scalar path's addcdiv ordering.
+                    torch._foreach_addcdiv_(params_with_grad, ms, denoms, value=step_sizes_neg[0])
+                else:
+                    # Sparse/intermittent gradients need independent bias
+                    # corrections.  Keep that correctness over batching only
+                    # for the uncommon heterogeneous-step case.
+                    for param, momentum, denom, step_size in zip(
+                        params_with_grad, ms, denoms, step_sizes_neg
+                    ):
+                        param.addcdiv_(momentum, denom, value=step_size)
 
     def _step_fused_cuda(self, group: dict[str, Any]) -> None:
         from ._cuda import fused_group_step, is_fused_available
