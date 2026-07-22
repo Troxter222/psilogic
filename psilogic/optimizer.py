@@ -39,6 +39,12 @@ def _validate_hyperparameters(
     betas: tuple[float, float],
     agc_clip: float,
     max_cancel: float,
+    p_ext: float,
+    eps: float,
+    chaos_tau: float,
+    tau_scale: float,
+    gamma_T_max: int,
+    chaos_warmup: int,
 ) -> None:
     if lr < 0:
         raise ValueError(f"Invalid lr: {lr} (must be >= 0)")
@@ -56,6 +62,46 @@ def _validate_hyperparameters(
         raise ValueError(f"Invalid agc_clip: {agc_clip} (must be >= 0)")
     if not 0 < max_cancel <= 1:
         raise ValueError(f"Invalid max_cancel: {max_cancel} (must be in (0, 1])")
+    if p_ext < 0:
+        raise ValueError(f"Invalid p_ext: {p_ext} (must be >= 0)")
+    if eps <= 0:
+        raise ValueError(f"Invalid eps: {eps} (must be > 0)")
+    if chaos_tau < 0:
+        raise ValueError(f"Invalid chaos_tau: {chaos_tau} (must be >= 0)")
+    if tau_scale <= 0:
+        raise ValueError(f"Invalid tau_scale: {tau_scale} (must be > 0)")
+    if gamma_T_max < 0:
+        raise ValueError(f"Invalid gamma_T_max: {gamma_T_max} (must be >= 0)")
+    if chaos_warmup < -1:
+        raise ValueError(
+            f"Invalid chaos_warmup: {chaos_warmup} (must be >= -1, where -1 auto-scales)"
+        )
+
+
+def _validate_group(group: dict[str, Any]) -> None:
+    """Validate a single param-group's *effective* hyperparameters.
+
+    Constructor-level validation only ever sees the top-level defaults;
+    per-group overrides supplied either via ``params`` (a list of
+    param-group dicts) or later ``add_param_group`` calls bypass it
+    entirely. This re-validates the fully-merged group dict so overrides
+    are always checked too.
+    """
+    _validate_hyperparameters(
+        group["lr"],
+        group["weight_decay"],
+        group["gamma"],
+        group["quantum_decay"],
+        group["betas"],
+        group["agc_clip"],
+        group["max_cancel"],
+        group["p_ext"],
+        group["eps"],
+        group["chaos_tau"],
+        group["tau_scale"],
+        group["gamma_T_max"],
+        group["chaos_warmup"],
+    )
 
 
 def _apply_agc(grad: torch.Tensor, param: torch.Tensor, agc: float) -> torch.Tensor:
@@ -156,7 +202,19 @@ class PsiLogic(Optimizer):
         profile_step_time: bool = False,
     ) -> None:
         _validate_hyperparameters(
-            lr, weight_decay, gamma, quantum_decay, betas, agc_clip, max_cancel
+            lr,
+            weight_decay,
+            gamma,
+            quantum_decay,
+            betas,
+            agc_clip,
+            max_cancel,
+            p_ext,
+            eps,
+            chaos_tau,
+            tau_scale,
+            gamma_T_max,
+            chaos_warmup,
         )
 
         defaults = {
@@ -187,6 +245,17 @@ class PsiLogic(Optimizer):
         self._profile_step_time = bool(profile_step_time)
         self.last_step_time_ms: float = 0.0
         self.step_time_ms_ema: Optional[float] = None
+
+    def add_param_group(self, param_group: dict[str, Any]) -> None:
+        """Add a param group, validating its fully-merged hyperparameters.
+
+        ``params=[{...}, {...}]`` at construction time and later manual
+        calls both route through here (``Optimizer.__init__`` calls this
+        once per group), so this is the single choke point that catches
+        invalid overrides the constructor-level check can't see.
+        """
+        super().add_param_group(param_group)
+        _validate_group(self.param_groups[-1])
 
     # ------------------------------------------------------------------ #
     # Zero-config construction
