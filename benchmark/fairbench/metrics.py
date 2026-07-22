@@ -236,3 +236,103 @@ def welch_ttest(a: Sequence[float], b: Sequence[float], alpha: float = 0.05) -> 
     pooled_sd = math.sqrt(((na - 1) * va + (nb - 1) * vb) / max(na + nb - 2, 1))
     d = (ma - mb) / pooled_sd if pooled_sd > 0 else float("inf")
     return TTestResult(t, p, df, d, p < alpha)
+
+
+@dataclass
+class PairedTTestResult:
+    """Outcome of a paired two-sample test (same seeds/inits on both sides)."""
+
+    t_stat: float
+    p_value: float
+    df: float
+    cohens_dz: float
+    n_pairs: int
+    significant: bool
+
+
+def paired_ttest(a: Sequence[float], b: Sequence[float], alpha: float = 0.05) -> PairedTTestResult:
+    """Paired t-test on ``a - b`` for two optimizers sharing seeds/inits.
+
+    The benchmark trains every optimizer from an identical per-seed init on
+    an identical seed, so ``a[i]`` and ``b[i]`` are not independent draws --
+    they are the same seed's outcome under two optimizers. A paired test
+    (on the per-seed differences) is the correct choice here; an unpaired
+    test such as Welch's ignores the pairing and understates significance
+    when per-seed difficulty varies (which it does: some seeds are easy for
+    every optimizer, some are hard for every optimizer).
+
+    ``a`` and ``b`` must already be aligned by seed (``a[i]`` and ``b[i]``
+    come from the same seed) and equal length; non-finite entries in either
+    position are dropped as a pair before the test runs.
+    """
+    if len(a) != len(b):
+        raise ValueError(
+            f"paired_ttest requires equal-length, seed-aligned inputs, got {len(a)} vs {len(b)}"
+        )
+
+    pairs = [
+        (float(x), float(y))
+        for x, y in zip(a, b)
+        if x is not None and y is not None and math.isfinite(float(x)) and math.isfinite(float(y))
+    ]
+    n = len(pairs)
+    if n < 2:
+        return PairedTTestResult(float("nan"), float("nan"), float("nan"), float("nan"), n, False)
+
+    diffs = [x - y for x, y in pairs]
+    mean_diff = sum(diffs) / n
+    var_diff = sum((d - mean_diff) ** 2 for d in diffs) / (n - 1)
+    std_diff = math.sqrt(var_diff)
+    df = float(n - 1)
+
+    if std_diff == 0.0:
+        # Every seed moved the same direction by the same amount.
+        if mean_diff == 0.0:
+            return PairedTTestResult(0.0, 1.0, df, 0.0, n, False)
+        return PairedTTestResult(float("inf"), 0.0, df, float("inf"), n, True)
+
+    se = std_diff / math.sqrt(n)
+    t = mean_diff / se
+
+    try:
+        from scipy import stats  # type: ignore
+
+        p = float(2.0 * stats.t.sf(abs(t), df))
+    except Exception:
+        p = math.erfc(abs(t) / math.sqrt(2.0))
+
+    dz = mean_diff / std_diff
+    return PairedTTestResult(t, p, df, dz, n, p < alpha)
+
+
+def holm_bonferroni(pvalues: Sequence[float], alpha: float = 0.05) -> tuple[list[float], list[bool]]:
+    """Holm-Bonferroni step-down correction for a family of p-values.
+
+    Returns ``(adjusted_pvalues, reject)`` in the same order as ``pvalues``.
+    Holm controls the family-wise error rate (like Bonferroni) but is
+    uniformly more powerful, and unlike Benjamini-Hochberg it bounds the
+    probability of *any* false positive rather than the expected false
+    discovery *proportion* -- the appropriate default when every row in the
+    significance table is read as an individual claim ("psilogic beats X on
+    metric Y") rather than a screened candidate list where a few false
+    positives are tolerable. NaN p-values (e.g. a metric with <2 valid
+    pairs) pass through as NaN/not-rejected and are excluded from the
+    family size used to scale the correction.
+    """
+    m_all = len(pvalues)
+    valid_idx = [i for i, p in enumerate(pvalues) if p is not None and not math.isnan(p)]
+    m = len(valid_idx)
+
+    adjusted: list[float] = [float("nan")] * m_all
+    reject: list[bool] = [False] * m_all
+    if m == 0:
+        return adjusted, reject
+
+    order = sorted(valid_idx, key=lambda i: pvalues[i])
+    running_max = 0.0
+    for rank, idx in enumerate(order):
+        adj = pvalues[idx] * (m - rank)
+        running_max = max(running_max, adj)
+        adjusted[idx] = min(running_max, 1.0)
+        reject[idx] = adjusted[idx] < alpha
+    return adjusted, reject
