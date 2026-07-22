@@ -478,7 +478,12 @@ class BenchmarkRunner:
         )
 
         # ---- Stage 1: LR sweep (or use fixed LRs) ----
-        sweep_seed = self.cfg.seeds[0]
+        # The sweep seed must be disjoint from the Stage-2 evaluation seeds:
+        # reusing an evaluation seed for LR selection would let that seed's
+        # data order / init influence both which LR is picked *and* the
+        # reported score, biasing the final comparison in the selected
+        # optimizer's favor.
+        sweep_seed = self._resolve_sweep_seed()
         set_seed(sweep_seed)
         sweep_init = self._snapshot_init(arena)
         best_lrs = self._resolve_lrs(arena, engine, sweep_init, sweep_seed)
@@ -498,6 +503,32 @@ class BenchmarkRunner:
         self._record_statistics(arena_name, per_opt_finals, best_lrs)
 
     # ----------------------------- internals --------------------------- #
+
+    def _resolve_sweep_seed(self) -> int:
+        """Pick the Stage-1 LR-sweep seed, guaranteed disjoint from ``cfg.seeds``.
+
+        Reusing one of the Stage-2 evaluation seeds for LR selection would let
+        that seed's data order/init influence both which LR is chosen and the
+        reported score, biasing the final comparison (see issue #23). An
+        explicit ``cfg.sweep_seed`` is honored as long as it doesn't collide
+        with an evaluation seed; otherwise we derive one deterministically.
+        """
+        explicit = getattr(self.cfg, "sweep_seed", None)
+        if explicit is not None:
+            if explicit in self.cfg.seeds:
+                raise ValueError(
+                    f"cfg.sweep_seed={explicit} collides with an evaluation "
+                    f"seed in cfg.seeds={self.cfg.seeds}; they must be disjoint."
+                )
+            return explicit
+
+        # Deterministic fallback: smallest non-negative integer not already
+        # used as an evaluation seed, starting just past the largest one so
+        # sweep results stay stable if cfg.seeds gains entries later.
+        candidate = max(self.cfg.seeds, default=-1) + 1
+        while candidate in self.cfg.seeds:
+            candidate += 1
+        return candidate
 
     def _snapshot_init(self, arena: Arena) -> dict[str, torch.Tensor]:
         """Build a model under the current RNG and snapshot its initial weights."""
