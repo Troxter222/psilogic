@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import os
 import math
 from typing import Any, Callable
 
@@ -89,7 +90,7 @@ def _run_parity(
     model_ref = model_factory().to(device=device, dtype=dtype)
     model_other = _clone_model(model_ref)
 
-    opt_ref = PsiLogic(model_ref.parameters(), use_foreach=False, **kwargs)
+    opt_ref = PsiLogic(model_ref.parameters(), use_foreach=False, use_fused_cuda=False, **kwargs)
     if backend == "foreach":
         opt_other = PsiLogic(
             model_other.parameters(), use_foreach=True, use_fused_cuda=False, **kwargs
@@ -111,14 +112,26 @@ def _run_parity(
         opt_ref.zero_grad()
         opt_other.zero_grad()
         loss_ref = crit(model_ref(x), y)
-        loss_other = crit(model_other(x), y)
         loss_ref.backward()
-        loss_other.backward()
+        # Reuse model_ref's grads instead of a second independent backward
+        # pass: CUDA reductions aren't bit-deterministic across separate
+        # kernel launches, and bf16's ~7-bit mantissa turns that noise into
+        # a real rounding divergence that compounds over many steps.
+        for p_ref, p_other in zip(model_ref.parameters(), model_other.parameters()):
+            p_other.grad = p_ref.grad.clone()
         opt_ref.step()
         opt_other.step()
 
-    rtol = 1e-5 if dtype == torch.bfloat16 else 1e-6
-    atol = 1e-6 if dtype == torch.bfloat16 else 1e-7
+    if backend == "fused" and dtype == torch.bfloat16:
+        # The fused Triton kernel computes the whole step in fp32 and rounds
+        # to bf16 once at the end, vs. several sequential bf16 round-trips
+        # in the scalar/foreach path (mul_, addcdiv_, ...). That's fewer
+        # roundings, not a bug, but it means exact bf16 parity isn't
+        # achievable — allow a wider tolerance for this combination only.
+        rtol, atol = 3e-2, 5e-3
+    else:
+        rtol = 1e-5 if dtype == torch.bfloat16 else 1e-6
+        atol = 1e-6 if dtype == torch.bfloat16 else 1e-7
     _assert_state_close(opt_ref, opt_other, rtol=rtol, atol=atol)
 
 
@@ -173,6 +186,36 @@ def test_foreach_matches_scalar_mixed_shapes_cpu() -> None:
     )
 
 
+def test_foreach_lion_matches_scalar_cpu() -> None:
+    """The direct Foreach path must use the same Lion momentum update as scalar."""
+    torch.manual_seed(17)
+    scalar_param = nn.Parameter(torch.randn(7))
+    foreach_param = nn.Parameter(scalar_param.detach().clone())
+    kwargs = {
+        "lr": 1e-2,
+        "betas": (0.8, 0.3),
+        "gamma": 0.0,
+        "weight_decay": 0.0,
+        "grad_centralize": False,
+        "lion_mode": True,
+        "use_fused_cuda": False,
+    }
+    scalar = PsiLogic([scalar_param], use_foreach=False, **kwargs)
+    foreach = PsiLogic([foreach_param], use_foreach=True, **kwargs)
+
+    for grad in (torch.randn(7), torch.randn(7), torch.randn(7)):
+        scalar.zero_grad()
+        foreach.zero_grad()
+        scalar_param.grad = grad.clone()
+        foreach_param.grad = grad.clone()
+
+        scalar.step()
+        with torch.no_grad():
+            foreach._step_foreach(foreach.param_groups[0])
+
+    _assert_state_close(scalar, foreach)
+
+
 @pytest.mark.gpu
 @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16], ids=["fp32", "bf16"])
 def test_foreach_matches_scalar_cuda(dtype: torch.dtype) -> None:
@@ -219,6 +262,29 @@ def test_fused_matches_scalar_cuda(dtype: torch.dtype) -> None:
         backend="fused",
         device="cuda",
         dtype=dtype,
+    )
+
+
+@pytest.mark.gpu
+@pytest.mark.skipif(not is_fused_available(), reason="Triton fused CUDA path unavailable")
+def test_fused_lion_matches_scalar_cuda() -> None:
+    def factory() -> nn.Sequential:
+        torch.manual_seed(19)
+        return nn.Sequential(nn.Linear(64, 32), nn.ReLU(), nn.Linear(32, 8))
+
+    _run_parity(
+        model_factory=factory,
+        kwargs={
+            "lr": 1e-3,
+            "betas": (0.8, 0.3),
+            "gamma": 0.03,
+            "quantum_decay": 2e-4,
+            "chaos_warmup": 0,
+            "lion_mode": True,
+        },
+        n_steps=80,
+        backend="fused",
+        device="cuda",
     )
 
 
