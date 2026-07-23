@@ -19,10 +19,7 @@ class TinyViTLike(nn.Module):
     def __init__(self, depth: int = 12, dim: int = 128) -> None:
         super().__init__()
         self.layers = nn.ModuleList(
-            [
-                nn.Sequential(nn.Linear(dim, dim), nn.LayerNorm(dim), nn.GELU())
-                for _ in range(depth)
-            ]
+            [nn.Sequential(nn.Linear(dim, dim), nn.LayerNorm(dim), nn.GELU()) for _ in range(depth)]
         )
         self.head = nn.Linear(dim, 10)
 
@@ -81,7 +78,7 @@ def _profile_psilogic(model: nn.Module, device: str, fused: bool) -> None:
     with torch.profiler.profile(
         activities=[
             torch.profiler.ProfilerActivity.CPU,
-            *( [torch.profiler.ProfilerActivity.CUDA] if device == "cuda" else [] ),
+            *([torch.profiler.ProfilerActivity.CUDA] if device == "cuda" else []),
         ],
         record_shapes=False,
         with_stack=False,
@@ -95,7 +92,11 @@ def _profile_psilogic(model: nn.Module, device: str, fused: bool) -> None:
 
     label = "fused" if fused else "foreach"
     print(f"\n=== PsiLogic ({label}) kernel breakdown ===")
-    print(prof.key_averages().table(sort_by="cuda_time_total" if device == "cuda" else "cpu_time_total", row_limit=15))
+    print(
+        prof.key_averages().table(
+            sort_by="cuda_time_total" if device == "cuda" else "cpu_time_total", row_limit=15
+        )
+    )
 
 
 def main() -> None:
@@ -127,9 +128,13 @@ def main() -> None:
     )
 
     print(f"Device: {args.device}")
-    print(f"Parameters: {sum(p.numel() for p in model.parameters()):,} ({len(list(model.parameters()))} tensors)")
+    print(
+        f"Parameters: {sum(p.numel() for p in model.parameters()):,} ({len(list(model.parameters()))} tensors)"
+    )
     print(f"AdamW median step: {adamw_ms:.3f} ms")
-    print(f"PsiLogic (foreach) median step: {psi_foreach_ms:.3f} ms ({psi_foreach_ms / adamw_ms:.2f}x)")
+    print(
+        f"PsiLogic (foreach) median step: {psi_foreach_ms:.3f} ms ({psi_foreach_ms / adamw_ms:.2f}x)"
+    )
 
     if args.device == "cuda" and is_fused_available():
         psi_fused_ms = _median_step_ms(
@@ -143,7 +148,9 @@ def main() -> None:
             model,
             args.device,
         )
-        print(f"PsiLogic (fused) median step: {psi_fused_ms:.3f} ms ({psi_fused_ms / adamw_ms:.2f}x)")
+        print(
+            f"PsiLogic (fused) median step: {psi_fused_ms:.3f} ms ({psi_fused_ms / adamw_ms:.2f}x)"
+        )
         if args.profile:
             _profile_psilogic(model, args.device, fused=True)
     elif args.profile:

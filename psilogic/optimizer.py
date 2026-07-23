@@ -419,7 +419,9 @@ class PsiLogic(Optimizer):
 
             if qd_eff > 0:
                 qd_contrib = qd_eff * chaos_gain * (1.0 - spike_mask)
-                raw_grad_hp = raw_grad.to(compute_dtype) if raw_grad.dtype != compute_dtype else raw_grad
+                raw_grad_hp = (
+                    raw_grad.to(compute_dtype) if raw_grad.dtype != compute_dtype else raw_grad
+                )
                 param.mul_((1.0 - lr * qd_contrib * torch.tanh(raw_grad_hp.abs())).to(param.dtype))
         elif wd > 0:
             param.mul_(1.0 - lr * wd)
@@ -579,7 +581,9 @@ class PsiLogic(Optimizer):
         # Retain strict parity and numerical safety by using the scalar
         # path for CUDA FP16/BF16 groups; FP32 keeps the batched
         # implementation.
-        if any(param.is_cuda and param.dtype in _LOW_PRECISION_DTYPES for param in params_with_grad):
+        if any(
+            param.is_cuda and param.dtype in _LOW_PRECISION_DTYPES for param in params_with_grad
+        ):
             self._step_scalar(group)
             return
 
