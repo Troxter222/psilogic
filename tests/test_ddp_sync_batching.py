@@ -14,11 +14,12 @@ from __future__ import annotations
 
 from unittest import mock
 
+import pytest
 import torch
 import torch.nn as nn
 
 from psilogic import PsiLogic
-from psilogic._cuda import fused_group_step
+from psilogic._cuda import fused_group_step, is_fused_available
 
 
 def _model(n_layers: int = 3) -> nn.Sequential:
@@ -146,6 +147,7 @@ def test_batched_sync_matches_per_param_sync_numerically() -> None:
         )
 
 
+@pytest.mark.skipif(not is_fused_available(), reason="Triton fused CUDA path unavailable")
 def test_fused_group_step_matches_scalar_step_call_pattern() -> None:
     """fused_group_step should also call the sync callback exactly once,
     regardless of parameter count, mirroring _step_scalar's behavior.
