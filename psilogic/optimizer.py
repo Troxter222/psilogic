@@ -477,6 +477,14 @@ class PsiLogic(Optimizer):
         lion = group["lion_mode"]
         gamma_auto_on = group["gamma_auto"]
 
+        # Pass 1: per-param preprocessing, momentum/variance update, and the
+        # local (pre-sync) chaos EMA update. Deferring the DDP all-reduce
+        # until every parameter's local EMA has been computed lets us issue
+        # one packed collective per group per step instead of one per
+        # parameter — the per-param values going into that reduction are
+        # unaffected by batching, since each param's fast/slow tensors are
+        # reduced independently regardless of how many are packed together.
+        prepared: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict[str, Any], int]] = []
         for param in group["params"]:
             if param.grad is None:
                 continue
@@ -515,8 +523,16 @@ class PsiLogic(Optimizer):
                 state["gn_avg"],
                 eps,
             )
-            self._maybe_sync_chaos([state])
+            prepared.append((param, raw_grad, grad, state, step))
 
+        if not prepared:
+            return
+
+        self._maybe_sync_chaos([p[3] for p in prepared])
+
+        # Pass 2: chaos decay + Adam/Lion update, using the now-synced
+        # fast/slow chaos state.
+        for param, raw_grad, grad, state, step in prepared:
             gamma_eff, qd_eff = effective_gamma_and_qd(step, gamma_t_max, gamma, qd)
             if gamma_auto_on:
                 gamma_eff = auto_gamma(state["slow"], step, gamma_eff)
