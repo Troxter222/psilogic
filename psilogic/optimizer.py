@@ -121,13 +121,31 @@ def _centralize_grad(grad: torch.Tensor) -> torch.Tensor:
     return grad - grad.mean(dim=tuple(range(1, grad.dim())), keepdim=True)
 
 
+_LOW_PRECISION_DTYPES = (torch.float16, torch.bfloat16)
+
+
+def _state_dtype(param: torch.Tensor) -> torch.dtype:
+    """Accumulator dtype for a parameter's optimizer state.
+
+    FP16/BF16 parameters get FP32 state (momentum, variance, and the
+    fast/slow/gn_avg chaos EMAs) so that long-running EMAs and second-moment
+    estimates don't underflow or lose precision over long training runs.
+    Higher-precision parameters keep state in their own dtype, matching
+    prior behavior.
+    """
+    if param.dtype in _LOW_PRECISION_DTYPES:
+        return torch.float32
+    return param.dtype
+
+
 def _init_param_state(state: dict[str, Any], param: torch.Tensor) -> None:
+    compute_dtype = _state_dtype(param)
     state["t"] = 0
-    state["m"] = torch.zeros_like(param)
-    state["v"] = torch.zeros_like(param)
-    state["fast"] = torch.zeros(1, device=param.device, dtype=param.dtype)
-    state["slow"] = torch.zeros(1, device=param.device, dtype=param.dtype)
-    state["gn_avg"] = torch.zeros(1, device=param.device, dtype=param.dtype)
+    state["m"] = torch.zeros_like(param, dtype=compute_dtype)
+    state["v"] = torch.zeros_like(param, dtype=compute_dtype)
+    state["fast"] = torch.zeros(1, device=param.device, dtype=compute_dtype)
+    state["slow"] = torch.zeros(1, device=param.device, dtype=compute_dtype)
+    state["gn_avg"] = torch.zeros(1, device=param.device, dtype=compute_dtype)
 
 
 class PsiLogic(Optimizer):
@@ -329,11 +347,12 @@ class PsiLogic(Optimizer):
                 state = self.state.get(param)
                 if not state:
                     continue
+                compute_dtype = _state_dtype(param)
                 if "gn_avg" not in state:
-                    state["gn_avg"] = torch.zeros(1, device=param.device, dtype=param.dtype)
+                    state["gn_avg"] = torch.zeros(1, device=param.device, dtype=compute_dtype)
                 for key in ("fast", "slow"):
                     if key not in state:
-                        state[key] = torch.ones(1, device=param.device, dtype=param.dtype)
+                        state[key] = torch.ones(1, device=param.device, dtype=compute_dtype)
 
     # ------------------------------------------------------------------ #
     # DDP chaos synchronization
@@ -376,6 +395,12 @@ class PsiLogic(Optimizer):
         chaos_gain: float,
     ) -> None:
         if chaos_gain > 0.0 and gamma_eff > 0:
+            # slow_t/fast_t live in the state's compute dtype (FP32 for
+            # low-precision params), so run the decay math there and only
+            # cast the multiplier down to the param's dtype at the point of
+            # application. An in-place multiply directly by an FP32 tensor
+            # on an FP16 param would raise a dtype error anyway.
+            compute_dtype = slow_t.dtype
             chaos_contrib, spike_mask = chaos_contribution(
                 slow_t,
                 fast_t,
@@ -387,14 +412,17 @@ class PsiLogic(Optimizer):
                 gamma_eff=gamma_eff,
                 p_ext=p_ext,
                 max_cancel=max_cancel,
-                param_dtype=param.dtype,
+                param_dtype=compute_dtype,
             )
             total_scalar_decay = lr * wd + chaos_contrib * chaos_gain
-            param.mul_(1.0 - total_scalar_decay)
+            param.mul_((1.0 - total_scalar_decay).to(param.dtype))
 
             if qd_eff > 0:
                 qd_contrib = qd_eff * chaos_gain * (1.0 - spike_mask)
-                param.mul_(1.0 - lr * qd_contrib * torch.tanh(raw_grad.abs()))
+                raw_grad_hp = (
+                    raw_grad.to(compute_dtype) if raw_grad.dtype != compute_dtype else raw_grad
+                )
+                param.mul_((1.0 - lr * qd_contrib * torch.tanh(raw_grad_hp.abs())).to(param.dtype))
         elif wd > 0:
             param.mul_(1.0 - lr * wd)
 
@@ -411,16 +439,24 @@ class PsiLogic(Optimizer):
         step: int,
         lion: bool,
     ) -> None:
+        # state["m"]/state["v"] live in the state's compute dtype (FP32 for
+        # low-precision params). Do the update math there, then cast the
+        # final delta down to the param's own dtype for the actual
+        # in-place write, since e.g. addcdiv_ on an FP16 param with FP32
+        # operands would raise a dtype error.
+        compute_dtype = state["m"].dtype
+        grad_hp = grad.to(compute_dtype) if grad.dtype != compute_dtype else grad
         if lion:
-            update = (beta1 * state["m"] + (1.0 - beta1) * grad).sign()
-            param.add_(update, alpha=-lr)
-            state["m"].mul_(beta2).add_(grad, alpha=1.0 - beta2)
+            update = (beta1 * state["m"] + (1.0 - beta1) * grad_hp).sign()
+            param.add_(update.to(param.dtype), alpha=-lr)
+            state["m"].mul_(beta2).add_(grad_hp, alpha=1.0 - beta2)
         else:
             bc1 = 1.0 - beta1**step
             bc2 = math.sqrt(1.0 - beta2**step)
             step_size = lr * bc2 / bc1
             denom = state["v"].sqrt().add_(eps)
-            param.addcdiv_(state["m"], denom, value=-step_size)
+            update = (state["m"] / denom).mul_(step_size)
+            param.sub_(update.to(param.dtype))
 
     def _step_scalar(self, group: dict[str, Any]) -> None:
         lr = group["lr"]
@@ -459,13 +495,20 @@ class PsiLogic(Optimizer):
             state["t"] += 1
             step = state["t"]
 
+            # state["m"]/state["v"]/fast/slow/gn_avg live in the state's
+            # compute dtype (FP32 for low-precision params); upcast the
+            # gradient once so the EMA accumulations happen at full
+            # precision instead of underflowing in FP16/BF16.
+            compute_dtype = state["m"].dtype
+            grad_hp = grad.to(compute_dtype) if grad.dtype != compute_dtype else grad
+
             if not lion:
-                state["m"].mul_(beta1).add_(grad, alpha=1.0 - beta1)
-                state["v"].mul_(beta2).addcmul_(grad, grad, value=1.0 - beta2)
+                state["m"].mul_(beta1).add_(grad_hp, alpha=1.0 - beta1)
+                state["v"].mul_(beta2).addcmul_(grad_hp, grad_hp, value=1.0 - beta2)
 
             update_gradient_norm_ema(
-                grad.norm(),
-                grad.numel(),
+                grad_hp.norm(),
+                grad_hp.numel(),
                 step,
                 state["fast"],
                 state["slow"],
@@ -532,10 +575,15 @@ class PsiLogic(Optimizer):
             return
 
         # CUDA foreach kernels do not round BF16 elementwise updates in the
-        # same way as the scalar kernels.  The discrepancy compounds across
-        # optimizer steps, so retain strict parity by using the scalar path
-        # for CUDA BF16 groups; FP32 keeps the batched implementation.
-        if any(param.is_cuda and param.dtype == torch.bfloat16 for param in params_with_grad):
+        # same way as the scalar kernels, and the batched path below does
+        # not perform the FP32-upcast state accumulation that
+        # _step_scalar/_init_param_state use for low-precision params.
+        # Retain strict parity and numerical safety by using the scalar
+        # path for CUDA FP16/BF16 groups; FP32 keeps the batched
+        # implementation.
+        if any(
+            param.is_cuda and param.dtype in _LOW_PRECISION_DTYPES for param in params_with_grad
+        ):
             self._step_scalar(group)
             return
 
