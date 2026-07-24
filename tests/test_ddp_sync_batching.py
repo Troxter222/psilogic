@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 
 from psilogic import PsiLogic
-from psilogic._cuda import fused_group_step, is_fused_available
+from psilogic._cuda import fused_group_step
 
 
 def _model(n_layers: int = 3) -> nn.Sequential:
@@ -62,15 +62,18 @@ def test_scalar_path_issues_one_sync_per_group() -> None:
     )
 
 
+@pytest.mark.gpu
 def test_fused_path_issues_one_sync_per_group() -> None:
-    model = _model()
+    # The real Triton kernels (unlike the scalar/eager path) require CUDA
+    # tensors — they cannot run against CPU tensors at all.
+    model = _model().cuda()
     n_params = len(list(model.parameters()))
     assert n_params > 1
 
     opt = PsiLogic(
         model.parameters(), lr=1e-3, sync_chaos_ddp=True, use_fused_cuda=True, use_foreach=False
     )
-    x, y = torch.randn(4, 8), torch.randn(4, 2)
+    x, y = torch.randn(4, 8, device="cuda"), torch.randn(4, 2, device="cuda")
     loss = nn.MSELoss()(model(x), y)
     loss.backward()
 
@@ -117,29 +120,33 @@ def test_batched_sync_matches_per_param_sync_numerically() -> None:
     )
 
     x, y = torch.randn(4, 8), torch.randn(4, 2)
-    for opt, model in ((opt_batched, model_batched), (opt_individual, model_individual)):
+    for _opt, model in ((opt_batched, model_batched), (opt_individual, model_individual)):
         loss = nn.MSELoss()(model(x), y)
         loss.backward()
 
-    with mock.patch("torch.distributed.is_available", return_value=True), mock.patch(
-        "torch.distributed.is_initialized", return_value=True
-    ), mock.patch("torch.distributed.get_world_size", return_value=1), mock.patch(
-        "torch.distributed.all_reduce", side_effect=_fake_all_reduce_add_offset(0.01)
-    ):
-        # Batched: one _maybe_sync_chaos call covering every param (current behavior).
-        opt_batched.step()
+    # Parenthesized multi-context-manager `with` needs Python 3.9+; this repo
+    # targets 3.8, so nest them instead of `with (a, b, c, d):`.
+    with mock.patch("torch.distributed.is_available", return_value=True):
+        with mock.patch("torch.distributed.is_initialized", return_value=True):
+            with mock.patch("torch.distributed.get_world_size", return_value=1):
+                with mock.patch(
+                    "torch.distributed.all_reduce",
+                    side_effect=_fake_all_reduce_add_offset(0.01),
+                ):
+                    # Batched: one _maybe_sync_chaos call covering every param (current behavior).
+                    opt_batched.step()
 
-        # Individual: force one _maybe_sync_chaos call per param, mimicking
-        # the pre-fix per-parameter sync, by monkeypatching to call the
-        # original per-state as it's produced.
-        original_sync = opt_individual._maybe_sync_chaos
+                    # Individual: force one _maybe_sync_chaos call per param, mimicking
+                    # the pre-fix per-parameter sync, by monkeypatching to call the
+                    # original per-state as it's produced.
+                    original_sync = opt_individual._maybe_sync_chaos
 
-        def per_param_sync(states):
-            for s in states:
-                original_sync([s])
+                    def per_param_sync(states):
+                        for s in states:
+                            original_sync([s])
 
-        opt_individual._maybe_sync_chaos = per_param_sync
-        opt_individual.step()
+                    opt_individual._maybe_sync_chaos = per_param_sync
+                    opt_individual.step()
 
     for p_batched, p_individual in zip(model_batched.parameters(), model_individual.parameters()):
         assert torch.allclose(p_batched, p_individual, atol=1e-6), (
@@ -147,15 +154,15 @@ def test_batched_sync_matches_per_param_sync_numerically() -> None:
         )
 
 
-@pytest.mark.skipif(not is_fused_available(), reason="Triton fused CUDA path unavailable")
+@pytest.mark.gpu
 def test_fused_group_step_matches_scalar_step_call_pattern() -> None:
     """fused_group_step should also call the sync callback exactly once,
     regardless of parameter count, mirroring _step_scalar's behavior.
     """
-    model = _model()
+    model = _model().cuda()
     n_params = len(list(model.parameters()))
     opt = PsiLogic(model.parameters(), lr=1e-3, sync_chaos_ddp=True, use_foreach=False)
-    x, y = torch.randn(4, 8), torch.randn(4, 2)
+    x, y = torch.randn(4, 8, device="cuda"), torch.randn(4, 2, device="cuda")
     loss = nn.MSELoss()(model(x), y)
     loss.backward()
 
