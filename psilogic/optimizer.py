@@ -98,12 +98,16 @@ def _centralize_grad(grad: torch.Tensor) -> torch.Tensor:
 
 
 def _init_param_state(state: dict[str, Any], param: torch.Tensor) -> None:
+    # Optimizer state is always kept in fp32, even when the parameter itself
+    # is fp16/bf16. Accumulating momentum/variance and the chaos EMAs at low
+    # precision underflows and drifts to NaN over many steps; fp32 state is
+    # the standard mixed-precision-optimizer pattern (as in fused Adam).
     state["t"] = 0
-    state["m"] = torch.zeros_like(param)
-    state["v"] = torch.zeros_like(param)
-    state["fast"] = torch.zeros(1, device=param.device, dtype=param.dtype)
-    state["slow"] = torch.zeros(1, device=param.device, dtype=param.dtype)
-    state["gn_avg"] = torch.zeros(1, device=param.device, dtype=param.dtype)
+    state["m"] = torch.zeros_like(param, dtype=torch.float32)
+    state["v"] = torch.zeros_like(param, dtype=torch.float32)
+    state["fast"] = torch.zeros(1, device=param.device, dtype=torch.float32)
+    state["slow"] = torch.zeros(1, device=param.device, dtype=torch.float32)
+    state["gn_avg"] = torch.zeros(1, device=param.device, dtype=torch.float32)
 
 
 class PsiLogic(Optimizer):
@@ -283,10 +287,10 @@ class PsiLogic(Optimizer):
                 if not state:
                     continue
                 if "gn_avg" not in state:
-                    state["gn_avg"] = torch.zeros(1, device=param.device, dtype=param.dtype)
+                    state["gn_avg"] = torch.zeros(1, device=param.device, dtype=torch.float32)
                 for key in ("fast", "slow"):
                     if key not in state:
-                        state[key] = torch.ones(1, device=param.device, dtype=param.dtype)
+                        state[key] = torch.ones(1, device=param.device, dtype=torch.float32)
 
     # ------------------------------------------------------------------ #
     # DDP chaos synchronization
@@ -417,6 +421,9 @@ class PsiLogic(Optimizer):
         lion = group["lion_mode"]
         gamma_auto_on = group["gamma_auto"]
 
+        # Phase 1 (prepare): grad processing, momentum update, and the
+        # gradient-norm EMA update for every parameter in the group.
+        prepared: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict[str, Any], int]] = []
         for param in group["params"]:
             if param.grad is None:
                 continue
@@ -448,8 +455,18 @@ class PsiLogic(Optimizer):
                 state["gn_avg"],
                 eps,
             )
-            self._maybe_sync_chaos([state])
 
+            prepared.append((param, raw_grad, grad, state, step))
+
+        if not prepared:
+            return
+
+        # Phase 2 (sync): one batched all-reduce for the whole group instead
+        # of one all-reduce per parameter.
+        self._maybe_sync_chaos([state for (_, _, _, state, _) in prepared])
+
+        # Phase 3 (finalize): chaos-conditioned decay and the Adam/Lion update.
+        for param, raw_grad, grad, state, step in prepared:
             gamma_eff, qd_eff = effective_gamma_and_qd(step, gamma_t_max, gamma, qd)
             if gamma_auto_on:
                 gamma_eff = float(auto_gamma(state["slow"], step, gamma_eff))
