@@ -6,17 +6,31 @@ import math
 from typing import Any, Callable
 
 import torch
+import torch.distributed as dist
 
 from psilogic._chaos import (
     auto_gamma,
+    auto_gamma_batched,
     chaos_contribution,
+    chaos_contribution_batched,
     effective_gamma_and_qd,
     effective_warmup,
     update_gradient_norm_ema,
+    update_gradient_norm_ema_batched,
 )
 from psilogic.optimizer import _apply_agc, _centralize_grad, _init_param_state
 
 from . import kernels
+
+_ZERO_CACHE: dict[torch.device, torch.Tensor] = {}
+
+
+def _zero_scalar(device: torch.device) -> torch.Tensor:
+    z = _ZERO_CACHE.get(device)
+    if z is None:
+        z = torch.zeros(1, device=device, dtype=torch.float32)
+        _ZERO_CACHE[device] = z
+    return z
 
 
 def _leader_layout(param: torch.Tensor) -> tuple[int, int]:
@@ -62,9 +76,6 @@ def _fused_param_prepare(
     raw_grad = raw_grad.contiguous()
     grad = grad.contiguous()
     if gc:
-        # Use the scalar reference reduction here.  Triton's atomic row sums
-        # are order-dependent and can move the chaos EMA enough to alter later
-        # cancellation decisions, particularly for long FP32 runs.
         grad = _centralize_grad(grad).contiguous()
     raw_grad_buf = torch.empty_like(grad)
     n_leaders, elems_per_leader = _leader_layout(param)
@@ -130,9 +141,10 @@ def _fused_param_finalize(
         gamma_eff = auto_gamma(state["slow"], step, gamma_eff)
     chaos_gain = effective_warmup(step, gamma_t_max, warmup_cfg)
 
-    total_scalar_decay = 0.0
-    wd_only_decay = 0.0
-    qd_contrib = 0.0
+    zero = _zero_scalar(param.device)
+    total_scalar_decay = zero
+    wd_only_decay = zero
+    qd_contrib = zero
     apply_quantum = False
 
     if chaos_gain > 0.0 and gamma_eff > 0:
@@ -149,12 +161,16 @@ def _fused_param_finalize(
             max_cancel=max_cancel,
             param_dtype=param.dtype,
         )
-        total_scalar_decay = float((lr * wd + chaos_contrib * chaos_gain).item())
+        total_scalar_decay = (
+            (lr * wd + chaos_contrib * chaos_gain).reshape(1).to(torch.float32).contiguous()
+        )
         if qd_eff > 0:
-            qd_contrib = float((qd_eff * chaos_gain * (1.0 - spike_mask)).item())
+            qd_contrib = (
+                (qd_eff * chaos_gain * (1.0 - spike_mask)).reshape(1).to(torch.float32).contiguous()
+            )
             apply_quantum = True
     elif wd > 0:
-        wd_only_decay = lr * wd
+        wd_only_decay = torch.full((1,), lr * wd, device=param.device, dtype=torch.float32)
 
     if lion:
         step_size = lr
@@ -276,29 +292,11 @@ def fused_group_step(
     lion = group["lion_mode"]
     gamma_auto_on = group["gamma_auto"]
 
-    prepared: list[tuple[torch.Tensor, dict[str, Any], torch.Tensor, torch.Tensor, int]] = []
     for param in group["params"]:
         state = state_dict[param]
-        result = _fused_param_prepare(
-            param, state, beta1=beta1, beta2=beta2, eps=eps, gc=gc, agc=agc, lion=lion
-        )
-        if result is None:
-            continue
-        grad, raw_grad_buf, step = result
-        prepared.append((param, state, grad, raw_grad_buf, step))
-
-    if not prepared:
-        return
-
-    maybe_sync([p[1] for p in prepared])
-
-    for param, state, grad, raw_grad_buf, step in prepared:
-        _fused_param_finalize(
+        fused_param_step(
             param,
             state,
-            grad,
-            raw_grad_buf,
-            step,
             lr=lr,
             beta1=beta1,
             beta2=beta2,
@@ -307,12 +305,15 @@ def fused_group_step(
             p_ext=p_ext,
             qd=qd,
             eps=eps,
+            gc=gc,
             chaos_tau=chaos_tau,
             warmup_cfg=warmup_cfg,
             adapt_tau=adapt_tau,
             tau_scale=tau_scale,
             max_cancel=max_cancel,
+            agc=agc,
             gamma_t_max=gamma_t_max,
             lion=lion,
             gamma_auto_on=gamma_auto_on,
+            maybe_sync=maybe_sync,
         )

@@ -133,6 +133,92 @@ def chaos_contribution(
     return torch.clamp(raw_cc, max=max_cancel) * spike_mask, spike_mask
 
 
+def update_gradient_norm_ema_batched(
+    gn_scaled: torch.Tensor,
+    step: int,
+    fast_vec: torch.Tensor,
+    slow_vec: torch.Tensor,
+    gn_avg_vec: torch.Tensor,
+    eps: float,
+) -> None:
+    """Vectorized dual-EMA update across an entire parameter group.
+
+    Only valid when every parameter in the group is on the *same* step
+    (checked by the caller). ``gn_scaled`` is the stacked, already
+    ``||grad||/sqrt(numel)``-normalized per-parameter gradient norm.
+
+    Every operation here is elementwise along the parameter axis — there is
+    no reduction across parameters — so this is bit-for-bit identical to
+    calling :func:`update_gradient_norm_ema` once per parameter in a loop;
+    it is purely a batching of the same arithmetic into fewer, larger kernel
+    launches instead of many size-1 ones.
+    """
+    if step == 1:
+        gn_avg_vec.copy_(gn_scaled)
+        fast_vec.fill_(1.0)
+        slow_vec.fill_(1.0)
+    else:
+        gn_avg_vec.mul_(0.99).add_(gn_scaled, alpha=0.01)
+        gn_norm = gn_scaled / (gn_avg_vec + eps)
+        fast_vec.mul_(0.9).add_(gn_norm, alpha=0.1)
+        slow_vec.mul_(0.99).add_(gn_norm, alpha=0.01)
+
+
+def auto_gamma_batched(
+    slow_vec: torch.Tensor,
+    step: int,
+    gamma_base: float,
+) -> torch.Tensor:
+    """Vectorized :func:`auto_gamma` — never calls ``.item()``/``float()``.
+
+    The scalar version forces a device-to-host sync per parameter (its own
+    docstring flags this). Doing the same convergence-aware reduction as one
+    elementwise op over the stacked ``slow`` vector produces identical
+    per-parameter values while keeping everything on-device, so a group of
+    ``n`` parameters costs one sync-free kernel instead of ``n`` blocking
+    syncs.
+    """
+    if step <= 1 or gamma_base <= 0.0:
+        return torch.full_like(slow_vec, gamma_base)
+    scaled = gamma_base * torch.clamp(slow_vec / _AUTO_GAMMA_THRESHOLD, min=_AUTO_GAMMA_FLOOR)
+    return torch.where(
+        slow_vec >= _AUTO_GAMMA_THRESHOLD, torch.full_like(slow_vec, gamma_base), scaled
+    )
+
+
+def chaos_contribution_batched(
+    slow_vec: torch.Tensor,
+    fast_vec: torch.Tensor,
+    *,
+    adaptive_tau: bool,
+    chaos_tau: float,
+    tau_scale: float,
+    eps: float,
+    lr: float,
+    gamma_eff: torch.Tensor | float,
+    p_ext: float,
+    max_cancel: float,
+    param_dtype: torch.dtype,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Vectorized :func:`chaos_contribution` across an entire parameter group.
+
+    Same formula as the scalar version, applied elementwise over the
+    parameter axis. ``gamma_eff`` may be a Python float (group-uniform,
+    ``gamma_auto=False``) or a per-parameter ``(n,)`` tensor from
+    :func:`auto_gamma_batched` — both broadcast correctly against the
+    ``(n,)`` chaos vectors.
+    """
+    if adaptive_tau:
+        spike_mask = (fast_vec > tau_scale * slow_vec + eps).to(param_dtype)
+    else:
+        spike_mask = (slow_vec >= chaos_tau).to(param_dtype)
+
+    ratio = fast_vec / (slow_vec + eps)
+    chaos = torch.tanh(slow_vec) * (1.0 + 0.5 * torch.tanh(torch.clamp(ratio - 1.0, min=0.0)))
+    raw_cc = chaos * lr * gamma_eff * p_ext
+    return torch.clamp(raw_cc, max=max_cancel) * spike_mask, spike_mask
+
+
 def update_gradient_norm_ema(
     grad_norm: torch.Tensor,
     numel: int,
