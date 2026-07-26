@@ -267,6 +267,7 @@ def fused_group_step(
             s["gn_avg"].copy_(gn_avg_vec[i : i + 1])
 
         gamma_eff, qd_eff = effective_gamma_and_qd(step, gamma_t_max, gamma, qd)
+        gamma_eff_vec: torch.Tensor | float
         if gamma_auto_on:
             gamma_eff_vec = auto_gamma_batched(slow_vec, step, gamma_eff)
         else:
