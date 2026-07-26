@@ -40,33 +40,27 @@ def _leader_layout(param: torch.Tensor) -> tuple[int, int]:
     return n_leaders, param.numel() // n_leaders
 
 
-def fused_param_step(
+def _fused_param_prepare(
     param: torch.Tensor,
     state: dict[str, Any],
     *,
-    lr: float,
     beta1: float,
     beta2: float,
-    wd: float,
-    gamma: float,
-    p_ext: float,
-    qd: float,
     eps: float,
     gc: bool,
-    chaos_tau: float,
-    warmup_cfg: int,
-    adapt_tau: bool,
-    tau_scale: float,
-    max_cancel: float,
     agc: float,
-    gamma_t_max: int,
     lion: bool,
-    gamma_auto_on: bool,
-    maybe_sync: Callable[[list[dict[str, Any]]], None],
-) -> None:
-    """Fused CUDA step for one parameter tensor (matches ``_step_scalar`` order)."""
+) -> tuple[torch.Tensor, torch.Tensor, int] | None:
+    """Grad prep, state init, fused moment-update kernel, and the local
+    (pre-sync) chaos EMA update for one parameter.
+
+    Returns ``(grad, raw_grad_buf, step)`` for use by ``_fused_param_finalize``,
+    or ``None`` if the parameter has no gradient. Does not perform the DDP
+    chaos sync — callers should sync once for the whole batch of prepared
+    states, then call ``_fused_param_finalize`` for each.
+    """
     if param.grad is None:
-        return
+        return None
 
     raw_grad = param.grad
     grad = _apply_agc(raw_grad, param, agc)
@@ -113,8 +107,35 @@ def fused_param_step(
         state["gn_avg"],
         eps,
     )
-    maybe_sync([state])
 
+    return grad, raw_grad_buf, step
+
+
+def _fused_param_finalize(
+    param: torch.Tensor,
+    state: dict[str, Any],
+    grad: torch.Tensor,
+    raw_grad_buf: torch.Tensor,
+    step: int,
+    *,
+    lr: float,
+    beta1: float,
+    beta2: float,
+    wd: float,
+    gamma: float,
+    p_ext: float,
+    qd: float,
+    eps: float,
+    chaos_tau: float,
+    warmup_cfg: int,
+    adapt_tau: bool,
+    tau_scale: float,
+    max_cancel: float,
+    gamma_t_max: int,
+    lion: bool,
+    gamma_auto_on: bool,
+) -> None:
+    """Chaos decay + fused Adam/Lion update, using already-synced chaos state."""
     gamma_eff, qd_eff = effective_gamma_and_qd(step, gamma_t_max, gamma, qd)
     if gamma_auto_on:
         gamma_eff = auto_gamma(state["slow"], step, gamma_eff)
@@ -175,6 +196,69 @@ def fused_param_step(
     )
 
 
+def fused_param_step(
+    param: torch.Tensor,
+    state: dict[str, Any],
+    *,
+    lr: float,
+    beta1: float,
+    beta2: float,
+    wd: float,
+    gamma: float,
+    p_ext: float,
+    qd: float,
+    eps: float,
+    gc: bool,
+    chaos_tau: float,
+    warmup_cfg: int,
+    adapt_tau: bool,
+    tau_scale: float,
+    max_cancel: float,
+    agc: float,
+    gamma_t_max: int,
+    lion: bool,
+    gamma_auto_on: bool,
+    maybe_sync: Callable[[list[dict[str, Any]]], None],
+) -> None:
+    """Fused CUDA step for one parameter tensor (matches ``_step_scalar`` order).
+
+    Kept for standalone/single-parameter use. ``fused_group_step`` batches the
+    DDP sync across a whole group instead of calling this per parameter.
+    """
+    prepared = _fused_param_prepare(
+        param, state, beta1=beta1, beta2=beta2, eps=eps, gc=gc, agc=agc, lion=lion
+    )
+    if prepared is None:
+        return
+    grad, raw_grad_buf, step = prepared
+
+    maybe_sync([state])
+
+    _fused_param_finalize(
+        param,
+        state,
+        grad,
+        raw_grad_buf,
+        step,
+        lr=lr,
+        beta1=beta1,
+        beta2=beta2,
+        wd=wd,
+        gamma=gamma,
+        p_ext=p_ext,
+        qd=qd,
+        eps=eps,
+        chaos_tau=chaos_tau,
+        warmup_cfg=warmup_cfg,
+        adapt_tau=adapt_tau,
+        tau_scale=tau_scale,
+        max_cancel=max_cancel,
+        gamma_t_max=gamma_t_max,
+        lion=lion,
+        gamma_auto_on=gamma_auto_on,
+    )
+
+
 def fused_group_step(
     group: dict[str, Any],
     state_dict: dict[Any, dict[str, Any]],
@@ -182,7 +266,12 @@ def fused_group_step(
     sync_chaos_ddp: bool,
     maybe_sync: Callable[[list[dict[str, Any]]], None],
 ) -> None:
-    """Run fused steps for all parameters in a group."""
+    """Run fused steps for all parameters in a group.
+
+    The DDP chaos sync is issued once for the whole group (one packed
+    all-reduce covering every parameter's fast/slow EMA) instead of once per
+    parameter, which matters for models with many parameter tensors.
+    """
     lr = group["lr"]
     beta1, beta2 = group["betas"]
     wd = group["weight_decay"]
@@ -201,54 +290,45 @@ def fused_group_step(
     lion = group["lion_mode"]
     gamma_auto_on = group["gamma_auto"]
 
-    params_with_grad = [p for p in group["params"] if p.grad is not None]
-    if not params_with_grad:
+    prepared: list[tuple[torch.Tensor, dict[str, Any], torch.Tensor, torch.Tensor, int]] = []
+    for param in group["params"]:
+        state = state_dict[param]
+        result = _fused_param_prepare(
+            param, state, beta1=beta1, beta2=beta2, eps=eps, gc=gc, agc=agc, lion=lion
+        )
+        if result is None:
+            continue
+        grad, raw_grad_buf, step = result
+        prepared.append((param, state, grad, raw_grad_buf, step))
+
+    if not prepared:
         return
 
-    states = []
-    for param in params_with_grad:
-        state = state_dict[param]
-        if not state:
-            _init_param_state(state, param)
-        state["t"] += 1
-        states.append(state)
+    maybe_sync([p[1] for p in prepared])
 
-    raw_grads = [p.grad for p in params_with_grad]
-
-    if agc > 0.0:
-        p_norms = torch.stack(torch._foreach_norm(params_with_grad))
-        g_norms = torch.stack(torch._foreach_norm(raw_grads))
-        max_norms = agc * p_norms.clamp(min=1e-3)
-        clip_factors = (max_norms / g_norms.clamp(min=1e-6)).clamp(max=1.0)
-        grads = [g * cf for g, cf in zip(raw_grads, clip_factors.unbind())]
-    else:
-        grads = list(raw_grads)
-
-    raw_grads_buf = [g.contiguous() for g in grads]
-
-    if gc:
-        grads = [
-            _centralize_grad(g).contiguous() if g.dim() > 1 else g.contiguous()
-            for g in grads
-        ]
-    else:
-        grads = [g.contiguous() for g in grads]
-
-    g_norms = torch.stack(torch._foreach_norm(grads))
-
-    step = states[0]["t"]
-    uniform_step = all(s["t"] == step for s in states)
-    homogeneous = len({(p.device, p.dtype) for p in params_with_grad}) == 1
-
-    if uniform_step and homogeneous:
-        fast_vec = torch.cat([s["fast"] for s in states])
-        slow_vec = torch.cat([s["slow"] for s in states])
-        gn_avg_vec = torch.cat([s["gn_avg"] for s in states])
-
-        sqrt_numels = torch.tensor(
-            [math.sqrt(max(g.numel(), 1)) for g in grads],
-            device=fast_vec.device,
-            dtype=fast_vec.dtype,
+    for param, state, grad, raw_grad_buf, step in prepared:
+        _fused_param_finalize(
+            param,
+            state,
+            grad,
+            raw_grad_buf,
+            step,
+            lr=lr,
+            beta1=beta1,
+            beta2=beta2,
+            wd=wd,
+            gamma=gamma,
+            p_ext=p_ext,
+            qd=qd,
+            eps=eps,
+            chaos_tau=chaos_tau,
+            warmup_cfg=warmup_cfg,
+            adapt_tau=adapt_tau,
+            tau_scale=tau_scale,
+            max_cancel=max_cancel,
+            gamma_t_max=gamma_t_max,
+            lion=lion,
+            gamma_auto_on=gamma_auto_on,
         )
         gn_scaled_vec = g_norms / sqrt_numels
 

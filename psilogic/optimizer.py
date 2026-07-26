@@ -61,6 +61,12 @@ def _validate_hyperparameters(
     betas: tuple[float, float],
     agc_clip: float,
     max_cancel: float,
+    p_ext: float,
+    eps: float,
+    chaos_tau: float,
+    tau_scale: float,
+    gamma_T_max: int,
+    chaos_warmup: int,
 ) -> None:
     if lr < 0:
         raise ValueError(f"Invalid lr: {lr} (must be >= 0)")
@@ -78,6 +84,46 @@ def _validate_hyperparameters(
         raise ValueError(f"Invalid agc_clip: {agc_clip} (must be >= 0)")
     if not 0 < max_cancel <= 1:
         raise ValueError(f"Invalid max_cancel: {max_cancel} (must be in (0, 1])")
+    if p_ext < 0:
+        raise ValueError(f"Invalid p_ext: {p_ext} (must be >= 0)")
+    if eps <= 0:
+        raise ValueError(f"Invalid eps: {eps} (must be > 0)")
+    if chaos_tau < 0:
+        raise ValueError(f"Invalid chaos_tau: {chaos_tau} (must be >= 0)")
+    if tau_scale <= 0:
+        raise ValueError(f"Invalid tau_scale: {tau_scale} (must be > 0)")
+    if gamma_T_max < 0:
+        raise ValueError(f"Invalid gamma_T_max: {gamma_T_max} (must be >= 0)")
+    if chaos_warmup < -1:
+        raise ValueError(
+            f"Invalid chaos_warmup: {chaos_warmup} (must be >= -1, where -1 auto-scales)"
+        )
+
+
+def _validate_group(group: dict[str, Any]) -> None:
+    """Validate a single param-group's *effective* hyperparameters.
+
+    Constructor-level validation only ever sees the top-level defaults;
+    per-group overrides supplied either via ``params`` (a list of
+    param-group dicts) or later ``add_param_group`` calls bypass it
+    entirely. This re-validates the fully-merged group dict so overrides
+    are always checked too.
+    """
+    _validate_hyperparameters(
+        group["lr"],
+        group["weight_decay"],
+        group["gamma"],
+        group["quantum_decay"],
+        group["betas"],
+        group["agc_clip"],
+        group["max_cancel"],
+        group["p_ext"],
+        group["eps"],
+        group["chaos_tau"],
+        group["tau_scale"],
+        group["gamma_T_max"],
+        group["chaos_warmup"],
+    )
 
 
 def _apply_agc(grad: torch.Tensor, param: torch.Tensor, agc: float) -> torch.Tensor:
@@ -97,13 +143,31 @@ def _centralize_grad(grad: torch.Tensor) -> torch.Tensor:
     return grad - grad.mean(dim=tuple(range(1, grad.dim())), keepdim=True)
 
 
+_LOW_PRECISION_DTYPES = (torch.float16, torch.bfloat16)
+
+
+def _state_dtype(param: torch.Tensor) -> torch.dtype:
+    """Accumulator dtype for a parameter's optimizer state.
+
+    FP16/BF16 parameters get FP32 state (momentum, variance, and the
+    fast/slow/gn_avg chaos EMAs) so that long-running EMAs and second-moment
+    estimates don't underflow or lose precision over long training runs.
+    Higher-precision parameters keep state in their own dtype, matching
+    prior behavior.
+    """
+    if param.dtype in _LOW_PRECISION_DTYPES:
+        return torch.float32
+    return param.dtype
+
+
 def _init_param_state(state: dict[str, Any], param: torch.Tensor) -> None:
+    compute_dtype = _state_dtype(param)
     state["t"] = 0
-    state["m"] = torch.zeros_like(param)
-    state["v"] = torch.zeros_like(param)
-    state["fast"] = torch.zeros(1, device=param.device, dtype=param.dtype)
-    state["slow"] = torch.zeros(1, device=param.device, dtype=param.dtype)
-    state["gn_avg"] = torch.zeros(1, device=param.device, dtype=param.dtype)
+    state["m"] = torch.zeros_like(param, dtype=compute_dtype)
+    state["v"] = torch.zeros_like(param, dtype=compute_dtype)
+    state["fast"] = torch.zeros(1, device=param.device, dtype=compute_dtype)
+    state["slow"] = torch.zeros(1, device=param.device, dtype=compute_dtype)
+    state["gn_avg"] = torch.zeros(1, device=param.device, dtype=compute_dtype)
 
 
 class PsiLogic(Optimizer):
@@ -178,7 +242,19 @@ class PsiLogic(Optimizer):
         profile_step_time: bool = False,
     ) -> None:
         _validate_hyperparameters(
-            lr, weight_decay, gamma, quantum_decay, betas, agc_clip, max_cancel
+            lr,
+            weight_decay,
+            gamma,
+            quantum_decay,
+            betas,
+            agc_clip,
+            max_cancel,
+            p_ext,
+            eps,
+            chaos_tau,
+            tau_scale,
+            gamma_T_max,
+            chaos_warmup,
         )
 
         defaults = {
@@ -209,6 +285,17 @@ class PsiLogic(Optimizer):
         self._profile_step_time = bool(profile_step_time)
         self.last_step_time_ms: float = 0.0
         self.step_time_ms_ema: Optional[float] = None
+
+    def add_param_group(self, param_group: dict[str, Any]) -> None:
+        """Add a param group, validating its fully-merged hyperparameters.
+
+        ``params=[{...}, {...}]`` at construction time and later manual
+        calls both route through here (``Optimizer.__init__`` calls this
+        once per group), so this is the single choke point that catches
+        invalid overrides the constructor-level check can't see.
+        """
+        super().add_param_group(param_group)
+        _validate_group(self.param_groups[-1])
 
     # ------------------------------------------------------------------ #
     # Zero-config construction
@@ -282,11 +369,12 @@ class PsiLogic(Optimizer):
                 state = self.state.get(param)
                 if not state:
                     continue
+                compute_dtype = _state_dtype(param)
                 if "gn_avg" not in state:
-                    state["gn_avg"] = torch.zeros(1, device=param.device, dtype=param.dtype)
+                    state["gn_avg"] = torch.zeros(1, device=param.device, dtype=compute_dtype)
                 for key in ("fast", "slow"):
                     if key not in state:
-                        state[key] = torch.ones(1, device=param.device, dtype=param.dtype)
+                        state[key] = torch.ones(1, device=param.device, dtype=compute_dtype)
 
     # ------------------------------------------------------------------ #
     # DDP chaos synchronization
@@ -352,6 +440,12 @@ class PsiLogic(Optimizer):
         chaos_gain: float,
     ) -> None:
         if chaos_gain > 0.0 and gamma_eff > 0:
+            # slow_t/fast_t live in the state's compute dtype (FP32 for
+            # low-precision params), so run the decay math there and only
+            # cast the multiplier down to the param's dtype at the point of
+            # application. An in-place multiply directly by an FP32 tensor
+            # on an FP16 param would raise a dtype error anyway.
+            compute_dtype = slow_t.dtype
             chaos_contrib, spike_mask = chaos_contribution(
                 slow_t,
                 fast_t,
@@ -363,14 +457,17 @@ class PsiLogic(Optimizer):
                 gamma_eff=gamma_eff,
                 p_ext=p_ext,
                 max_cancel=max_cancel,
-                param_dtype=param.dtype,
+                param_dtype=compute_dtype,
             )
             total_scalar_decay = lr * wd + chaos_contrib * chaos_gain
-            param.mul_(1.0 - total_scalar_decay)
+            param.mul_((1.0 - total_scalar_decay).to(param.dtype))
 
             if qd_eff > 0:
                 qd_contrib = qd_eff * chaos_gain * (1.0 - spike_mask)
-                param.mul_(1.0 - lr * qd_contrib * torch.tanh(raw_grad.abs()))
+                raw_grad_hp = (
+                    raw_grad.to(compute_dtype) if raw_grad.dtype != compute_dtype else raw_grad
+                )
+                param.mul_((1.0 - lr * qd_contrib * torch.tanh(raw_grad_hp.abs())).to(param.dtype))
         elif wd > 0:
             param.mul_(1.0 - lr * wd)
 
@@ -387,16 +484,24 @@ class PsiLogic(Optimizer):
         step: int,
         lion: bool,
     ) -> None:
+        # state["m"]/state["v"] live in the state's compute dtype (FP32 for
+        # low-precision params). Do the update math there, then cast the
+        # final delta down to the param's own dtype for the actual
+        # in-place write, since e.g. addcdiv_ on an FP16 param with FP32
+        # operands would raise a dtype error.
+        compute_dtype = state["m"].dtype
+        grad_hp = grad.to(compute_dtype) if grad.dtype != compute_dtype else grad
         if lion:
-            update = (beta1 * state["m"] + (1.0 - beta1) * grad).sign()
-            param.add_(update, alpha=-lr)
-            state["m"].mul_(beta2).add_(grad, alpha=1.0 - beta2)
+            update = (beta1 * state["m"] + (1.0 - beta1) * grad_hp).sign()
+            param.add_(update.to(param.dtype), alpha=-lr)
+            state["m"].mul_(beta2).add_(grad_hp, alpha=1.0 - beta2)
         else:
             bc1 = 1.0 - beta1**step
             bc2 = math.sqrt(1.0 - beta2**step)
             step_size = lr * bc2 / bc1
             denom = state["v"].sqrt().add_(eps)
-            param.addcdiv_(state["m"], denom, value=-step_size)
+            update = (state["m"] / denom).mul_(step_size)
+            param.sub_(update.to(param.dtype))
 
     def _step_scalar(self, group: dict[str, Any]) -> None:
         lr = group["lr"]
@@ -417,6 +522,14 @@ class PsiLogic(Optimizer):
         lion = group["lion_mode"]
         gamma_auto_on = group["gamma_auto"]
 
+        # Pass 1: per-param preprocessing, momentum/variance update, and the
+        # local (pre-sync) chaos EMA update. Deferring the DDP all-reduce
+        # until every parameter's local EMA has been computed lets us issue
+        # one packed collective per group per step instead of one per
+        # parameter — the per-param values going into that reduction are
+        # unaffected by batching, since each param's fast/slow tensors are
+        # reduced independently regardless of how many are packed together.
+        prepared: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict[str, Any], int]] = []
         for param in group["params"]:
             if param.grad is None:
                 continue
@@ -435,21 +548,36 @@ class PsiLogic(Optimizer):
             state["t"] += 1
             step = state["t"]
 
+            # state["m"]/state["v"]/fast/slow/gn_avg live in the state's
+            # compute dtype (FP32 for low-precision params); upcast the
+            # gradient once so the EMA accumulations happen at full
+            # precision instead of underflowing in FP16/BF16.
+            compute_dtype = state["m"].dtype
+            grad_hp = grad.to(compute_dtype) if grad.dtype != compute_dtype else grad
+
             if not lion:
-                state["m"].mul_(beta1).add_(grad, alpha=1.0 - beta1)
-                state["v"].mul_(beta2).addcmul_(grad, grad, value=1.0 - beta2)
+                state["m"].mul_(beta1).add_(grad_hp, alpha=1.0 - beta1)
+                state["v"].mul_(beta2).addcmul_(grad_hp, grad_hp, value=1.0 - beta2)
 
             update_gradient_norm_ema(
-                grad.norm(),
-                grad.numel(),
+                grad_hp.norm(),
+                grad_hp.numel(),
                 step,
                 state["fast"],
                 state["slow"],
                 state["gn_avg"],
                 eps,
             )
-            self._maybe_sync_chaos([state])
+            prepared.append((param, raw_grad, grad, state, step))
 
+        if not prepared:
+            return
+
+        self._maybe_sync_chaos([p[3] for p in prepared])
+
+        # Pass 2: chaos decay + Adam/Lion update, using the now-synced
+        # fast/slow chaos state.
+        for param, raw_grad, grad, state, step in prepared:
             gamma_eff, qd_eff = effective_gamma_and_qd(step, gamma_t_max, gamma, qd)
             if gamma_auto_on:
                 gamma_eff = auto_gamma(state["slow"], step, gamma_eff)
@@ -507,7 +635,16 @@ class PsiLogic(Optimizer):
         if not params_with_grad:
             return
 
-        if any(param.is_cuda and param.dtype == torch.bfloat16 for param in params_with_grad):
+        # CUDA foreach kernels do not round BF16 elementwise updates in the
+        # same way as the scalar kernels, and the batched path below does
+        # not perform the FP32-upcast state accumulation that
+        # _step_scalar/_init_param_state use for low-precision params.
+        # Retain strict parity and numerical safety by using the scalar
+        # path for CUDA FP16/BF16 groups; FP32 keeps the batched
+        # implementation.
+        if any(
+            param.is_cuda and param.dtype in _LOW_PRECISION_DTYPES for param in params_with_grad
+        ):
             self._step_scalar(group)
             return
 
