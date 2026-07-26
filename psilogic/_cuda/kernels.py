@@ -60,6 +60,22 @@ if _HAS_TRITON:
         offsets = pid * BLOCK + tl.arange(0, BLOCK)
         mask = offsets < n_elements
 
+        # Under eager dispatch (kernel[grid](...)) Triton infers these plain
+        # Python floats as fp32. Under torch.compile/Inductor's generated
+        # wrapper the same call site specializes them as fp64 doubles
+        # instead (matching aten's default scalar promotion), which makes
+        # ``g``'s dtype diverge between the two branches of the
+        # ``if grad_centralize`` block below (fp32 on the implicit "else",
+        # fp64 on the "then") — Triton rejects that at compile time. Casting
+        # to fp32 up front pins the dtype so both branches agree, with no
+        # change to the arithmetic itself (all these scalars are already
+        # meant to be single precision here).
+        leader_count = leader_count.to(tl.float32)
+        beta1 = beta1.to(tl.float32)
+        beta2 = beta2.to(tl.float32)
+        one_minus_beta1 = one_minus_beta1.to(tl.float32)
+        one_minus_beta2 = one_minus_beta2.to(tl.float32)
+
         raw_g = tl.load(raw_input_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
         g = tl.load(g_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
         m = tl.load(m_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
@@ -91,9 +107,9 @@ if _HAS_TRITON:
         lr,
         eps,
         step_size,
-        total_scalar_decay,
-        wd_only_decay,
-        qd_contrib,
+        total_scalar_decay_ptr,  # was: total_scalar_decay (float) — now a 1-elem fp32 pointer
+        wd_only_decay_ptr,  # was: wd_only_decay (float)      — now a 1-elem fp32 pointer
+        qd_contrib_ptr,  # was: qd_contrib (float)         — now a 1-elem fp32 pointer
         apply_quantum,
         lion,
         beta1,
@@ -107,8 +123,29 @@ if _HAS_TRITON:
         offsets = pid * BLOCK + tl.arange(0, BLOCK)
         mask = offsets < n_elements
 
+        # Same fp32/fp64 specialization hazard as `_centralize_moment_kernel`
+        # above: under eager dispatch these Python-float kernel arguments
+        # infer as fp32, but torch.compile/Inductor's wrapper can specialize
+        # the same call site to fp64, which then makes `p`/`m` diverge in
+        # dtype between the `if`/`else` branches below and Triton rejects
+        # it at compile time. Pin them to fp32 up front — no change to the
+        # arithmetic, these were always meant to be single precision here.
+        lr = lr.to(tl.float32)
+        eps = eps.to(tl.float32)
+        step_size = step_size.to(tl.float32)
+        beta1 = beta1.to(tl.float32)
+        one_minus_beta1 = one_minus_beta1.to(tl.float32)
+        beta2 = beta2.to(tl.float32)
+        one_minus_beta2 = one_minus_beta2.to(tl.float32)
+
         p = tl.load(p_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
         m = tl.load(m_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+
+        # Scalars now live on-device; read them here instead of baking them
+        # in as Python-float kernel arguments computed via a blocking `.item()`
+        # on the host. Same values, same math — just no CPU/GPU sync to get them.
+        total_scalar_decay = tl.load(total_scalar_decay_ptr).to(tl.float32)
+        wd_only_decay = tl.load(wd_only_decay_ptr).to(tl.float32)
 
         if total_scalar_decay > 0.0:
             p = p * (1.0 - total_scalar_decay)
@@ -117,6 +154,7 @@ if _HAS_TRITON:
 
         if apply_quantum:
             raw_g = tl.load(raw_g_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+            qd_contrib = tl.load(qd_contrib_ptr).to(tl.float32)
             # Triton does not expose ``tl.tanh`` in all supported versions.
             # For non-negative x, tanh(x) == 2 * sigmoid(2x) - 1.
             p = p * (1.0 - lr * qd_contrib * (2.0 * tl.sigmoid(2.0 * tl.abs(raw_g)) - 1.0))
@@ -202,15 +240,22 @@ def launch_decay_adam(
     lr: float,
     eps: float,
     step_size: float,
-    total_scalar_decay: float,
-    wd_only_decay: float,
-    qd_contrib: float,
+    total_scalar_decay: torch.Tensor,
+    wd_only_decay: torch.Tensor,
+    qd_contrib: torch.Tensor,
     apply_quantum: bool,
     lion: bool,
     beta1: float,
     beta2: float,
 ) -> None:
-    """Apply chaos/weight decay and Adam or Lion param update."""
+    """Apply chaos/weight decay and Adam or Lion param update.
+
+    ``total_scalar_decay``, ``wd_only_decay``, and ``qd_contrib`` are now
+    1-element float32 CUDA tensors (not Python floats). The kernel reads
+    them straight off the device pointer, so the launch never forces a
+    device-to-host sync — the values are exactly what ``.item()`` would
+    have returned, just never pulled onto the CPU.
+    """
     _require_triton()
     n = param.numel()
     if n == 0:
@@ -226,9 +271,9 @@ def launch_decay_adam(
         float(lr),
         float(eps),
         float(step_size),
-        float(total_scalar_decay),
-        float(wd_only_decay),
-        float(qd_contrib),
+        total_scalar_decay,
+        wd_only_decay,
+        qd_contrib,
         apply_quantum,
         lion,
         float(beta1),
