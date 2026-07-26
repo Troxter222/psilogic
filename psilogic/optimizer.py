@@ -18,10 +18,13 @@ from torch.optim.optimizer import Optimizer
 
 from ._chaos import (
     auto_gamma,
+    auto_gamma_batched,
     chaos_contribution,
+    chaos_contribution_batched,
     effective_gamma_and_qd,
     effective_warmup,
     update_gradient_norm_ema,
+    update_gradient_norm_ema_batched,
 )
 
 _STATE_DICT_SCHEMA_KEY = "psilogic_schema"
@@ -29,6 +32,25 @@ _STATE_DICT_SCHEMA_VERSION = 2
 
 _FOREACH_OPS = ("mul_", "add_", "addcmul_", "sqrt", "addcdiv_", "norm")
 _FOREACH_AVAILABLE = all(hasattr(torch, f"_foreach_{op}") for op in _FOREACH_OPS)
+_FOREACH_COPY_AVAILABLE = hasattr(torch, "_foreach_copy_")
+
+# Cached per-(device, dtype) constant-1.0 scalar tensors. These stand in for
+# a per-parameter "no-op" multiplier (chaos/quantum-decay disabled for this
+# param this step) inside torch._foreach_mul_ calls, which only ever *read*
+# the scale tensors. Reusing one shared tensor per (device, dtype) instead of
+# allocating a fresh `torch.tensor(1.0, ...)` for every parameter, every
+# step, removes a large number of small CUDA allocations/kernel launches
+# without changing any computed value.
+_ONE_SCALAR_CACHE: dict[tuple[torch.device, torch.dtype], torch.Tensor] = {}
+
+
+def _one_scalar(device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+    key = (device, dtype)
+    t = _ONE_SCALAR_CACHE.get(key)
+    if t is None:
+        t = torch.ones(1, device=device, dtype=dtype)
+        _ONE_SCALAR_CACHE[key] = t
+    return t
 
 
 def _validate_hyperparameters(
@@ -270,6 +292,29 @@ class PsiLogic(Optimizer):
     # DDP chaos synchronization
     # ------------------------------------------------------------------ #
 
+    def _maybe_sync_chaos_batched(self, fast_vec: torch.Tensor, slow_vec: torch.Tensor) -> None:
+        """All-reduce (mean) stacked fast/slow chaos EMAs across DDP ranks.
+
+        Equivalent to :meth:`_maybe_sync_chaos` but takes the already-stacked
+        per-group vectors instead of a list of per-parameter state dicts.
+        Every rank builds the ``[fast_0..fast_n, slow_0..slow_n]`` layout in
+        the same (deterministic) parameter order, so summing per-position
+        across ranks gives the exact same reduced values as the original
+        per-parameter ``cat``/``all_reduce``/``copy_`` sequence — only the
+        in-tensor layout (block vs. interleaved) differs, which has no
+        effect on an elementwise sum-then-divide reduction.
+        """
+        if not self._sync_chaos_ddp:
+            return
+        if not (dist.is_available() and dist.is_initialized()):
+            return
+        n = fast_vec.numel()
+        flat = torch.cat((fast_vec, slow_vec)).float()
+        dist.all_reduce(flat, op=dist.ReduceOp.SUM)
+        flat.div_(dist.get_world_size())
+        fast_vec.copy_(flat[:n])
+        slow_vec.copy_(flat[n:])
+
     def _maybe_sync_chaos(self, states: list[dict[str, Any]]) -> None:
         """All-reduce (mean) fast/slow chaos EMAs across DDP ranks in-place."""
         if not self._sync_chaos_ddp or not states:
@@ -462,10 +507,6 @@ class PsiLogic(Optimizer):
         if not params_with_grad:
             return
 
-        # CUDA foreach kernels do not round BF16 elementwise updates in the
-        # same way as the scalar kernels.  The discrepancy compounds across
-        # optimizer steps, so retain strict parity by using the scalar path
-        # for CUDA BF16 groups; FP32 keeps the batched implementation.
         if any(param.is_cuda and param.dtype == torch.bfloat16 for param in params_with_grad):
             self._step_scalar(group)
             return
@@ -473,23 +514,18 @@ class PsiLogic(Optimizer):
         grads = [p.grad for p in params_with_grad]
 
         if agc > 0.0:
-            # Match the scalar path's reduction for numerical parity.  The
-            # foreach norm kernel can use a different CUDA reduction order,
-            # which is especially visible in BF16 AGC scale factors.
-            p_norms = [param.norm() for param in params_with_grad]
-            g_norms = [grad.norm() for grad in grads]
-            grads = [
-                g * (agc * pn.clamp(min=1e-3) / gn.clamp(min=1e-6)).clamp(max=1.0)
-                for g, pn, gn in zip(grads, p_norms, g_norms)
-            ]
+            p_norms = torch.stack(torch._foreach_norm(params_with_grad))
+            g_norms = torch.stack(torch._foreach_norm(grads))
+            max_norms = agc * p_norms.clamp(min=1e-3)
+            clip_factors = (max_norms / g_norms.clamp(min=1e-6)).clamp(max=1.0)
+            torch._foreach_mul_(grads, clip_factors.unbind())
 
-        # Snapshot pre-centralization grads for quantum decay (no clone: the
-        # centralization below rebinds list slots without mutating tensors).
         raw_grads = list(grads)
 
         if gc:
-            for i, grad in enumerate(grads):
-                grads[i] = _centralize_grad(grad)
+            grads = [
+                _centralize_grad(g) if g.dim() > 1 else g for g in grads
+            ]
 
         states = []
         for param in params_with_grad:
@@ -508,62 +544,150 @@ class PsiLogic(Optimizer):
             torch._foreach_mul_(vs, beta2)
             torch._foreach_addcmul_(vs, grads, grads, value=1.0 - beta2)
 
-        # Keep the chaos EMA reduction identical to _step_scalar.  Besides
-        # making the backends agree, this prevents a tiny CUDA norm delta
-        # from changing the cancellation gate on later steps.
-        g_norms = [grad.norm() for grad in grads]
-        for gn, state, grad in zip(g_norms, states, grads):
-            update_gradient_norm_ema(
-                gn, grad.numel(), state["t"], state["fast"], state["slow"], state["gn_avg"], eps
-            )
-        self._maybe_sync_chaos(states)
+        if gc or agc == 0.0:
+            g_norms_vec = torch.stack(torch._foreach_norm(grads))
+        else:
+            g_norms_vec = g_norms * clip_factors
 
-        # Compute parameter-wise decay scales and quantum decay factors
+        uniform_step = len({state["t"] for state in states}) == 1
+        homogeneous = len({(p.device, p.dtype) for p in params_with_grad}) == 1
+        batched = uniform_step and homogeneous
+
         decay_scales: list[torch.Tensor] = []
         qd_factors: list[torch.Tensor] = []
         has_chaos_or_wd = False
         has_qd = False
 
-        for param, raw_grad, state in zip(params_with_grad, raw_grads, states):
-            p_step = state["t"]
-            p_gamma_eff, p_qd_eff = effective_gamma_and_qd(p_step, gamma_t_max, gamma, qd)
-            if gamma_auto_on:
-                p_gamma_eff = auto_gamma(state["slow"], p_step, p_gamma_eff)
-            p_chaos_gain = effective_warmup(p_step, gamma_t_max, warmup_cfg)
+        if batched:
+            _group_step = states[0]["t"]
+            _group_gamma_eff, _group_qd_eff = effective_gamma_and_qd(
+                _group_step, gamma_t_max, gamma, qd
+            )
+            _group_chaos_gain = effective_warmup(_group_step, gamma_t_max, warmup_cfg)
 
-            if p_chaos_gain > 0.0 and p_gamma_eff > 0:
-                chaos_contrib, spike_mask = chaos_contribution(
-                    state["slow"],
-                    state["fast"],
+            fast_vec = torch.cat([s["fast"] for s in states])
+            slow_vec = torch.cat([s["slow"] for s in states])
+            gn_avg_vec = torch.cat([s["gn_avg"] for s in states])
+
+            sqrt_numels = torch.tensor(
+                [math.sqrt(max(g.numel(), 1)) for g in grads],
+                device=fast_vec.device,
+                dtype=fast_vec.dtype,
+            )
+            gn_scaled_vec = g_norms_vec / sqrt_numels
+
+            update_gradient_norm_ema_batched(
+                gn_scaled_vec, _group_step, fast_vec, slow_vec, gn_avg_vec, eps
+            )
+            self._maybe_sync_chaos_batched(fast_vec, slow_vec)
+
+            if _FOREACH_COPY_AVAILABLE:
+                fast_slices = [fast_vec[i : i + 1] for i in range(len(states))]
+                slow_slices = [slow_vec[i : i + 1] for i in range(len(states))]
+                gn_avg_slices = [gn_avg_vec[i : i + 1] for i in range(len(states))]
+                torch._foreach_copy_([s["fast"] for s in states], fast_slices)
+                torch._foreach_copy_([s["slow"] for s in states], slow_slices)
+                torch._foreach_copy_([s["gn_avg"] for s in states], gn_avg_slices)
+            else:
+                for i, state in enumerate(states):
+                    state["fast"].copy_(fast_vec[i : i + 1])
+                    state["slow"].copy_(slow_vec[i : i + 1])
+                    state["gn_avg"].copy_(gn_avg_vec[i : i + 1])
+
+            if _group_chaos_gain > 0.0 and _group_gamma_eff > 0:
+                has_chaos_or_wd = True
+                if gamma_auto_on:
+                    gamma_eff_vec = auto_gamma_batched(slow_vec, _group_step, _group_gamma_eff)
+                else:
+                    gamma_eff_vec = _group_gamma_eff
+
+                chaos_contrib_vec, spike_mask_vec = chaos_contribution_batched(
+                    slow_vec,
+                    fast_vec,
                     adaptive_tau=adapt_tau,
                     chaos_tau=group["chaos_tau"],
                     tau_scale=tau_scale,
                     eps=eps,
                     lr=lr,
-                    gamma_eff=p_gamma_eff,
+                    gamma_eff=gamma_eff_vec,
                     p_ext=p_ext,
                     max_cancel=max_cancel,
-                    param_dtype=param.dtype,
+                    param_dtype=fast_vec.dtype,
                 )
-                total_scalar_decay = lr * wd + chaos_contrib * p_chaos_gain
-                decay_scales.append(
-                    torch.tensor(1.0 - total_scalar_decay, device=param.device, dtype=param.dtype)
-                )
-                has_chaos_or_wd = True
+                decay_scale_vec = 1.0 - (lr * wd + chaos_contrib_vec * _group_chaos_gain)
+                decay_scales = [decay_scale_vec[i : i + 1] for i in range(len(states))]
 
-                if p_qd_eff > 0:
-                    qd_contrib = p_qd_eff * p_chaos_gain * (1.0 - spike_mask)
-                    qd_factors.append(1.0 - lr * qd_contrib * torch.tanh(raw_grad.abs()))
+                if _group_qd_eff > 0:
                     has_qd = True
+                    qd_contrib_vec = _group_qd_eff * _group_chaos_gain * (1.0 - spike_mask_vec)
+                    for i, raw_grad in enumerate(raw_grads):
+                        qd_factors.append(
+                            1.0 - lr * qd_contrib_vec[i : i + 1] * torch.tanh(raw_grad.abs())
+                        )
                 else:
-                    qd_factors.append(torch.tensor(1.0, device=param.device, dtype=param.dtype))
+                    one = _one_scalar(fast_vec.device, fast_vec.dtype)
+                    qd_factors = [one] * len(states)
             else:
-                decay_scales.append(
-                    torch.tensor(1.0 - lr * wd, device=param.device, dtype=param.dtype)
+                wd_only_scale = torch.tensor(
+                    1.0 - lr * wd, device=fast_vec.device, dtype=fast_vec.dtype
                 )
+                decay_scales = [wd_only_scale] * len(states)
                 if wd > 0:
                     has_chaos_or_wd = True
-                qd_factors.append(torch.tensor(1.0, device=param.device, dtype=param.dtype))
+                one = _one_scalar(fast_vec.device, fast_vec.dtype)
+                qd_factors = [one] * len(states)
+        else:
+            for gn, state, grad in zip(g_norms_vec.unbind(), states, grads):
+                update_gradient_norm_ema(
+                    gn, grad.numel(), state["t"], state["fast"], state["slow"], state["gn_avg"], eps
+                )
+            self._maybe_sync_chaos(states)
+
+            wd_only_scale_cache: dict[tuple[torch.device, torch.dtype], torch.Tensor] = {}
+
+            for param, raw_grad, state in zip(params_with_grad, raw_grads, states):
+                p_step = state["t"]
+                p_gamma_eff, p_qd_eff = effective_gamma_and_qd(p_step, gamma_t_max, gamma, qd)
+                if gamma_auto_on:
+                    p_gamma_eff = auto_gamma(state["slow"], p_step, p_gamma_eff)
+                p_chaos_gain = effective_warmup(p_step, gamma_t_max, warmup_cfg)
+
+                if p_chaos_gain > 0.0 and p_gamma_eff > 0:
+                    chaos_contrib, spike_mask = chaos_contribution(
+                        state["slow"],
+                        state["fast"],
+                        adaptive_tau=adapt_tau,
+                        chaos_tau=group["chaos_tau"],
+                        tau_scale=tau_scale,
+                        eps=eps,
+                        lr=lr,
+                        gamma_eff=p_gamma_eff,
+                        p_ext=p_ext,
+                        max_cancel=max_cancel,
+                        param_dtype=param.dtype,
+                    )
+                    total_scalar_decay = lr * wd + chaos_contrib * p_chaos_gain
+                    decay_scales.append(1.0 - total_scalar_decay)
+                    has_chaos_or_wd = True
+
+                    if p_qd_eff > 0:
+                        qd_contrib = p_qd_eff * p_chaos_gain * (1.0 - spike_mask)
+                        qd_factors.append(1.0 - lr * qd_contrib * torch.tanh(raw_grad.abs()))
+                        has_qd = True
+                    else:
+                        qd_factors.append(_one_scalar(param.device, param.dtype))
+                else:
+                    key = (param.device, param.dtype)
+                    wd_only_scale = wd_only_scale_cache.get(key)
+                    if wd_only_scale is None:
+                        wd_only_scale = torch.tensor(
+                            1.0 - lr * wd, device=param.device, dtype=param.dtype
+                        )
+                        wd_only_scale_cache[key] = wd_only_scale
+                    decay_scales.append(wd_only_scale)
+                    if wd > 0:
+                        has_chaos_or_wd = True
+                    qd_factors.append(_one_scalar(param.device, param.dtype))
 
         if has_chaos_or_wd:
             torch._foreach_mul_(params_with_grad, decay_scales)
@@ -577,7 +701,6 @@ class PsiLogic(Optimizer):
                 momentum.mul_(beta2).add_(grad, alpha=1.0 - beta2)
         else:
             if lr > 0.0:
-                # Calculate bias corrections and negative step sizes per parameter
                 bc1_list = [1.0 - beta1 ** state["t"] for state in states]
                 bc2_sqrt_list = [math.sqrt(1.0 - beta2 ** state["t"]) for state in states]
                 step_sizes_neg = [
@@ -586,31 +709,13 @@ class PsiLogic(Optimizer):
 
                 denoms = torch._foreach_sqrt(vs)
                 torch._foreach_add_(denoms, eps)
-                if len({state["t"] for state in states}) == 1:
-                    # This is the normal dense-training case and preserves
-                    # the scalar path's addcdiv ordering.
+                if uniform_step:
                     torch._foreach_addcdiv_(params_with_grad, ms, denoms, value=step_sizes_neg[0])
                 else:
-                    # Sparse/intermittent gradients need independent bias
-                    # corrections.  Keep that correctness over batching only
-                    # for the uncommon heterogeneous-step case.
                     for param, momentum, denom, step_size in zip(
                         params_with_grad, ms, denoms, step_sizes_neg
                     ):
                         param.addcdiv_(momentum, denom, value=step_size)
-
-    def _step_fused_cuda(self, group: dict[str, Any]) -> None:
-        from ._cuda import fused_group_step, is_fused_available
-
-        if not is_fused_available():
-            self._step_foreach(group)
-            return
-        fused_group_step(
-            group,
-            self.state,
-            sync_chaos_ddp=self._sync_chaos_ddp,
-            maybe_sync=self._maybe_sync_chaos,
-        )
 
     @torch.no_grad()
     def step(self, closure: Optional[Any] = None) -> Optional[torch.Tensor]:  # type: ignore[override]
@@ -621,12 +726,15 @@ class PsiLogic(Optimizer):
 
         t_start = time.perf_counter() if self._profile_step_time else 0.0
 
+        is_compiling = getattr(torch.compiler, "is_compiling", lambda: False)()
+
         for group in self.param_groups:
             has_cuda_grad = any(p.is_cuda for p in group["params"] if p.grad is not None)
             use_fused = (
                 self._use_fused_cuda
                 and group.get("use_fused_cuda", self._use_fused_cuda)
                 and has_cuda_grad
+                and not is_compiling
             )
             use_foreach = group["use_foreach"] and _FOREACH_AVAILABLE and has_cuda_grad
             if use_fused:
@@ -645,3 +753,16 @@ class PsiLogic(Optimizer):
                 self.step_time_ms_ema = 0.9 * self.step_time_ms_ema + 0.1 * elapsed_ms
 
         return loss
+
+    def _step_fused_cuda(self, group: dict[str, Any]) -> None:
+        from ._cuda import fused_group_step, is_fused_available
+
+        if not is_fused_available():
+            self._step_foreach(group)
+            return
+        fused_group_step(
+            group,
+            self.state,
+            sync_chaos_ddp=self._sync_chaos_ddp,
+            maybe_sync=self._maybe_sync_chaos,
+        )
