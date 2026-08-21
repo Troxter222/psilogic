@@ -4,19 +4,13 @@ torchvision>=0.16
 numpy>=1.23
 psilogic>=0.5.0          # the optimizer under test
 
-# Core (required)
-torch>=2.1
-torchvision>=0.16
-numpy>=1.23
-psilogic>=0.5.0          # the optimizer under test
-
 # Arenas (recommended; download works without these via stdlib fallbacks)
 timm>=1.0.28              # Arena 2: vit_tiny_patch16_224
-datasets>=2.14.0         # Arena 1: faster/reliable TinyStories streaming
+datasets>=2.14.0          # Arena 1: faster/reliable TinyStories streaming
 
 # Statistics & plotting (recommended; pure-Python fallbacks exist)
 scipy>=1.15.3              # exact Welch t-test p-values
-pandas>=2.3.3              # CSV analysis / LaTeX tables
+pandas>=2.3.3               # CSV analysis / LaTeX tables
 matplotlib>=3.10.9          # learning-curve plots with std bands
 
 # External logging (optional)
@@ -25,3 +19,7 @@ wandb>=0.28.1
 
 # Optional metrics
 torchmetrics>=1.9.0        # Arena 4: FID (only if --compute-fid is enabled)
+
+# Dataset downloads (CelebA from HuggingFace Hub, fast parallel transfer)
+huggingface_hub>=0.24.0
+hf_transfer>=0.1.6

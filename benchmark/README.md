@@ -100,6 +100,9 @@ Toronto / Stanford mirrors can crawl at **~20 KB/s** on some pods (CIFAR-100
 would take hours). Download once on your PC, upload the folder, then run offline.
 
 ```bash
+# Step 0 - set up variable
+export HF_HUB_ENABLE_HF_TRANSFER=1
+
 # Step 1 — on your PC (fast home internet), ~2 GB total:
 python -m fairbench.download --data-root ./data
 
