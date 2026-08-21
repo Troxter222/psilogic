@@ -524,10 +524,6 @@ class PsiLogic(Optimizer):
         if not params_with_grad:
             return
 
-        if any(param.is_cuda and param.dtype == torch.bfloat16 for param in params_with_grad):
-            self._step_scalar(group)
-            return
-
         grads = [p.grad for p in params_with_grad]
 
         if agc > 0.0:
@@ -559,10 +555,14 @@ class PsiLogic(Optimizer):
             torch._foreach_mul_(vs, beta2)
             torch._foreach_addcmul_(vs, grads, grads, value=1.0 - beta2)
 
-        if gc or agc == 0.0:
-            g_norms_vec = torch.stack(torch._foreach_norm(grads))
-        else:
-            g_norms_vec = g_norms * clip_factors
+        # Always recompute the norm directly from the final (post-AGC,
+        # post-centralize) gradient tensor, exactly like `_step_scalar`'s
+        # `grad.norm()`. The previous `g_norms * clip_factors` shortcut here
+        # (valid only in exact arithmetic: ||c*x|| == c*||x||) saved one
+        # `_foreach_norm` call but rounds differently from `(c*x).norm()` in
+        # low precision, which desynced the fast/slow chaos EMA from the
+        # scalar reference path under bf16/fp16.
+        g_norms_vec = torch.stack(torch._foreach_norm(grads))
 
         uniform_step = len({state["t"] for state in states}) == 1
         homogeneous = len({(p.device, p.dtype) for p in params_with_grad}) == 1

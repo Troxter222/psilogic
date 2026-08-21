@@ -174,6 +174,120 @@ if _HAS_TRITON:
         if lion:
             tl.store(m_ptr + offsets, m, mask=mask)
 
+    @triton.jit
+    def _fused_step_kernel(
+        grad_ptr,       # gradient used for the moment/variance EMA (post-AGC,
+                        # post-python-side centralize if any)
+        raw_grad_ptr,   # gradient used for quantum decay (post-AGC, pre-centralize)
+        p_ptr,
+        m_ptr,
+        v_ptr,
+        leader_sum_ptr,
+        leader_count,
+        beta1,
+        beta2,
+        one_minus_beta1,
+        one_minus_beta2,
+        lr,
+        eps,
+        step_size,
+        total_scalar_decay_ptr,
+        wd_only_decay_ptr,
+        qd_contrib_ptr,
+        grad_centralize,
+        update_variance,
+        update_momentum,
+        apply_quantum,
+        lion,
+        n_elements,
+        elems_per_leader,
+        n_leaders,
+        BLOCK: tl.constexpr,
+    ):
+        """One-launch fusion of ``_centralize_moment_kernel`` +
+        ``_decay_adam_kernel``.
+
+        Same fp32/fp64 Inductor-specialization hazard as the two kernels
+        above, so every scalar argument is pinned to fp32 up front for the
+        same reason (no change to the arithmetic).
+
+        Mirrors the exact two-kernel sequence:
+
+        - ``computed_m = beta1*m + (1-beta1)*g`` is the *same* expression
+          the old ``_centralize_moment_kernel`` computed as ``new_m`` *and*
+          the same expression the old ``_decay_adam_kernel``'s lion branch
+          recomputed as ``update`` (it re-derived it from the still-old
+          ``m`` because the first kernel only *stored* ``new_m`` when
+          ``update_momentum`` was true, i.e. never for lion) — so it is
+          computed once here and reused for both purposes.
+        - For non-lion, ``computed_m`` and the freshly computed variance are
+          exactly what the second kernel used to re-load from global memory
+          after the first kernel wrote them; here they simply stay in
+          registers.
+        - For lion, the *new* lion-style momentum
+          (``beta2*m_old + (1-beta2)*g``) still reads the *original* ``m``,
+          matching the old kernel's use of the not-yet-overwritten ``m``.
+        - The ``raw_g`` snapshot round trip through a scratch buffer is
+          gone: with everything in one launch there is no second kernel
+          that needs to re-read it from global memory, so it is simply
+          read once here from ``raw_grad_ptr`` for quantum decay.
+        """
+        pid = tl.program_id(0)
+        offsets = pid * BLOCK + tl.arange(0, BLOCK)
+        mask = offsets < n_elements
+
+        leader_count = leader_count.to(tl.float32)
+        beta1 = beta1.to(tl.float32)
+        beta2 = beta2.to(tl.float32)
+        one_minus_beta1 = one_minus_beta1.to(tl.float32)
+        one_minus_beta2 = one_minus_beta2.to(tl.float32)
+        lr = lr.to(tl.float32)
+        eps = eps.to(tl.float32)
+        step_size = step_size.to(tl.float32)
+
+        g = tl.load(grad_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+        raw_g = tl.load(raw_grad_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+        m_old = tl.load(m_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+        p = tl.load(p_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+
+        if grad_centralize:
+            leader = offsets // elems_per_leader
+            lsum = tl.load(leader_sum_ptr + leader, mask=leader < n_leaders, other=0.0)
+            g = g - lsum / leader_count
+
+        computed_m = beta1 * m_old + one_minus_beta1 * g
+
+        if update_variance:
+            v_old = tl.load(v_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+            new_v = beta2 * v_old + one_minus_beta2 * g * g
+            tl.store(v_ptr + offsets, new_v, mask=mask)
+        else:
+            new_v = tl.zeros_like(p)  # unused on the lion branch below
+
+        total_scalar_decay = tl.load(total_scalar_decay_ptr).to(tl.float32)
+        wd_only_decay = tl.load(wd_only_decay_ptr).to(tl.float32)
+        if total_scalar_decay > 0.0:
+            p = p * (1.0 - total_scalar_decay)
+        elif wd_only_decay > 0.0:
+            p = p * (1.0 - wd_only_decay)
+
+        if apply_quantum:
+            qd_contrib = tl.load(qd_contrib_ptr).to(tl.float32)
+            p = p * (1.0 - lr * qd_contrib * (2.0 * tl.sigmoid(2.0 * tl.abs(raw_g)) - 1.0))
+
+        if lion:
+            sign = tl.where(computed_m > 0, 1.0, tl.where(computed_m < 0, -1.0, 0.0))
+            p = p - lr * sign
+            new_m = beta2 * m_old + one_minus_beta2 * g
+            tl.store(m_ptr + offsets, new_m, mask=mask)
+        else:
+            if update_momentum:
+                tl.store(m_ptr + offsets, computed_m, mask=mask)
+            denom = tl.sqrt(new_v) + eps
+            p = p + (-step_size) * (computed_m / denom)
+
+        tl.store(p_ptr + offsets, p, mask=mask)
+
 
 def launch_leader_sums(grad: torch.Tensor, n_leaders: int, elems_per_leader: int) -> torch.Tensor:
     _require_triton()
@@ -281,5 +395,75 @@ def launch_decay_adam(
         float(beta2),
         float(1.0 - beta2),
         n,
+        BLOCK=block,
+    )
+
+
+def launch_fused_step(
+    grad: torch.Tensor,
+    raw_grad: torch.Tensor,
+    param: torch.Tensor,
+    momentum: torch.Tensor,
+    variance: torch.Tensor,
+    *,
+    grad_centralize: bool,
+    beta1: float,
+    beta2: float,
+    lr: float,
+    eps: float,
+    step_size: float,
+    total_scalar_decay: torch.Tensor,
+    wd_only_decay: torch.Tensor,
+    qd_contrib: torch.Tensor,
+    apply_quantum: bool,
+    lion: bool,
+    n_leaders: int,
+    elems_per_leader: int,
+    leader_sum: torch.Tensor,
+) -> None:
+    """Single-launch fusion of :func:`launch_centralize_moment` followed by
+    :func:`launch_decay_adam` for one parameter tensor.
+
+    Numerically identical to calling those two functions back to back (same
+    operations, same order — see :func:`_fused_step_kernel`'s docstring for
+    the exact correspondence), but issues one Triton kernel instead of two
+    and never round-trips the post-centralize gradient or the raw-gradient
+    snapshot through a scratch buffer, since both stay in registers within
+    the single launch.
+    """
+    _require_triton()
+    n = param.numel()
+    if n == 0:
+        return
+    block = 256
+    grid = (triton.cdiv(n, block),)
+    update_variance = not lion
+    update_momentum = not lion
+    _fused_step_kernel[grid](
+        grad,
+        raw_grad,
+        param,
+        momentum,
+        variance,
+        leader_sum,
+        float(elems_per_leader),
+        float(beta1),
+        float(beta2),
+        float(1.0 - beta1),
+        float(1.0 - beta2),
+        float(lr),
+        float(eps),
+        float(step_size),
+        total_scalar_decay,
+        wd_only_decay,
+        qd_contrib,
+        grad_centralize and n_leaders > 1 and elems_per_leader > 1,
+        update_variance,
+        update_momentum,
+        apply_quantum,
+        lion,
+        n,
+        elems_per_leader,
+        n_leaders,
         BLOCK=block,
     )
