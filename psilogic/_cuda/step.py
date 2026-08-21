@@ -22,6 +22,8 @@ from psilogic.optimizer import _apply_agc, _centralize_grad, _init_param_state
 
 from . import kernels
 
+_FOREACH_COPY_AVAILABLE = hasattr(torch, "_foreach_copy_")
+
 _ZERO_CACHE: dict[torch.device, torch.Tensor] = {}
 
 
@@ -83,25 +85,6 @@ def fused_param_step(
     grad = grad.contiguous()
     if gc:
         grad = _centralize_grad(grad).contiguous()
-    raw_grad_buf = torch.empty_like(grad)
-    n_leaders, elems_per_leader = _leader_layout(param)
-    leader_sum = torch.zeros(n_leaders, device=param.device, dtype=torch.float32)
-
-    kernels.launch_centralize_moment(
-        grad,
-        raw_grad,
-        raw_grad_buf,
-        state["m"],
-        state["v"],
-        grad_centralize=False,
-        beta1=beta1,
-        beta2=beta2,
-        update_variance=not lion,
-        update_momentum=not lion,
-        n_leaders=n_leaders,
-        elems_per_leader=elems_per_leader,
-        leader_sum=leader_sum,
-    )
 
     g_norm = grad.norm()
     update_gradient_norm_ema(
@@ -158,12 +141,15 @@ def fused_param_step(
         bc2 = math.sqrt(1.0 - beta2**step)
         step_size = lr * bc2 / bc1
 
-    kernels.launch_decay_adam(
+    kernels.launch_fused_step(
         grad,
-        raw_grad_buf,
+        raw_grad,
         param,
         state["m"],
         state["v"],
+        grad_centralize=False,
+        beta1=beta1,
+        beta2=beta2,
         lr=lr,
         eps=eps,
         step_size=step_size,
@@ -172,8 +158,9 @@ def fused_param_step(
         qd_contrib=qd_contrib,
         apply_quantum=apply_quantum,
         lion=lion,
-        beta1=beta1,
-        beta2=beta2,
+        n_leaders=1,
+        elems_per_leader=1,
+        leader_sum=_zero_scalar(param.device),
     )
 
 
@@ -253,18 +240,36 @@ def fused_group_step(
 
         update_gradient_norm_ema_batched(gn_scaled_vec, step, fast_vec, slow_vec, gn_avg_vec, eps)
 
-        if sync_chaos_ddp and dist.is_available() and dist.is_initialized():
-            n = fast_vec.numel()
-            flat = torch.cat((fast_vec, slow_vec)).float()
-            dist.all_reduce(flat, op=dist.ReduceOp.SUM)
-            flat.div_(dist.get_world_size())
-            fast_vec.copy_(flat[:n])
-            slow_vec.copy_(flat[n:])
+        if _FOREACH_COPY_AVAILABLE:
+            fast_slices = [fast_vec[i : i + 1] for i in range(len(states))]
+            slow_slices = [slow_vec[i : i + 1] for i in range(len(states))]
+            gn_avg_slices = [gn_avg_vec[i : i + 1] for i in range(len(states))]
+            torch._foreach_copy_([s["fast"] for s in states], fast_slices)
+            torch._foreach_copy_([s["slow"] for s in states], slow_slices)
+            torch._foreach_copy_([s["gn_avg"] for s in states], gn_avg_slices)
+        else:
+            for i, s in enumerate(states):
+                s["fast"].copy_(fast_vec[i : i + 1])
+                s["slow"].copy_(slow_vec[i : i + 1])
+                s["gn_avg"].copy_(gn_avg_vec[i : i + 1])
 
-        for i, s in enumerate(states):
-            s["fast"].copy_(fast_vec[i : i + 1])
-            s["slow"].copy_(slow_vec[i : i + 1])
-            s["gn_avg"].copy_(gn_avg_vec[i : i + 1])
+        # One batched sync call for the whole group (matches the scalar
+        # reference path's "N single-state calls" coverage, just issued as
+        # a single call over all N states here) instead of the old inline
+        # dist.all_reduce, which operated on `fast_vec`/`slow_vec` copies
+        # and therefore never actually reached `maybe_sync` — DDP callers
+        # relying on that callback got silently skipped in this path.
+        # `maybe_sync` is a no-op when sync_chaos_ddp is False or no process
+        # group is initialized, so it's safe to call unconditionally here,
+        # matching `fused_param_step`'s call convention below.
+        maybe_sync(states)
+        if sync_chaos_ddp:
+            # states' fast/slow tensors may have just been averaged across
+            # ranks in place; refresh the local vectors so the chaos gate
+            # computed below uses the synced values rather than this rank's
+            # pre-sync copy.
+            fast_vec = torch.cat([s["fast"] for s in states])
+            slow_vec = torch.cat([s["slow"] for s in states])
 
         gamma_eff, qd_eff = effective_gamma_and_qd(step, gamma_t_max, gamma, qd)
         gamma_eff_vec: torch.Tensor | float
@@ -321,12 +326,18 @@ def fused_group_step(
             bc2 = math.sqrt(1.0 - beta2**step)
             step_size = lr * bc2 / bc1
 
+        # grad_centralize is always False below (centralization was already
+        # applied per-tensor via _centralize_grad above, exactly like the
+        # foreach path) so the kernel's leader_sum branch is never taken -
+        # a real per-tensor n_leaders-sized buffer here would just be a
+        # wasted allocation + zero-fill kernel every step. The shared cached
+        # dummy tensor is never read in this call, only its (unused) pointer
+        # needs to be valid.
+        dummy_leader_sum = _zero_scalar(params_with_grad[0].device)
         for i, param in enumerate(params_with_grad):
             state = states[i]
             grad = grads[i]
             raw_gbuf = raw_grads_buf[i]
-            n_leaders, elems_per_leader = _leader_layout(param)
-            leader_sum = torch.zeros(n_leaders, device=param.device, dtype=torch.float32)
 
             kernels.launch_centralize_moment(
                 grad,
@@ -339,9 +350,9 @@ def fused_group_step(
                 beta2=beta2,
                 update_variance=not lion,
                 update_momentum=not lion,
-                n_leaders=n_leaders,
-                elems_per_leader=elems_per_leader,
-                leader_sum=leader_sum,
+                n_leaders=1,
+                elems_per_leader=1,
+                leader_sum=dummy_leader_sum,
             )
 
             kernels.launch_decay_adam(
