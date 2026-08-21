@@ -36,8 +36,13 @@ TINY_IMAGENET_DIR = "tiny-imagenet-200"
 CELEBA_DIR = "celeba"
 TINY_IMAGENET_URL = "http://cs231n.stanford.edu/tiny-imagenet-200.zip"
 
-DEFAULT_TRAIN_CHARS = 2_000_000
-DEFAULT_VAL_CHARS = 200_000
+# Raised from 2M/200K: at 5000 steps x batch128 x block128 (~82M tokens seen),
+# 2M chars meant ~16 full passes over the corpus and the nlp arena overfit
+# well before step 2000 (val_loss started rising, not plateauing). 27M chars
+# keeps the corpus-pass count to ~3x at a 5000-step budget, which is enough
+# headroom for a ~4-layer/256-dim byte-level GPT not to just memorize it.
+DEFAULT_TRAIN_CHARS = 27_000_000
+DEFAULT_VAL_CHARS = 1_000_000
 
 
 def tinystories_paths(data_root: str) -> dict[str, str]:
@@ -50,9 +55,37 @@ def tinystories_paths(data_root: str) -> dict[str, str]:
     }
 
 
-def tinystories_ready(data_root: str) -> bool:
+def tinystories_ready(data_root: str, min_train_chars: Optional[int] = None) -> bool:
+    """True if a cached TinyStories tensor pair exists.
+
+    If ``min_train_chars`` is given, a cache built with a *smaller*
+    ``train_chars`` budget than requested is treated as not-ready, so a
+    config bumping ``train_chars`` (e.g. to fix nlp-arena overfitting)
+    doesn't silently reuse a stale, too-small cache from a previous run.
+    Pass ``None`` (the default) to keep the old "file exists" behavior.
+    """
     p = tinystories_paths(data_root)
-    return os.path.isfile(p["train"]) and os.path.isfile(p["val"])
+    if not (os.path.isfile(p["train"]) and os.path.isfile(p["val"])):
+        return False
+    if min_train_chars is None:
+        return True
+    try:
+        with open(p["meta"], encoding="utf-8") as fh:
+            meta = json.load(fh)
+        cached_chars = int(meta.get("train_chars", 0))
+    except Exception:
+        # No/unreadable meta.json (e.g. an older cache) -- can't verify size,
+        # so treat it as stale rather than silently trusting it.
+        return False
+    if cached_chars < min_train_chars:
+        LOGGER.info(
+            "TinyStories cache at %s has train_chars=%d, requested %d; treating as stale.",
+            p["dir"],
+            cached_chars,
+            min_train_chars,
+        )
+        return False
+    return True
 
 
 def cifar100_ready(data_root: str) -> bool:
@@ -292,9 +325,15 @@ def download_tinystories(
     val_chars: int = DEFAULT_VAL_CHARS,
     force: bool = False,
 ) -> None:
-    """Stream TinyStories from HuggingFace and write a compact local cache."""
-    if tinystories_ready(data_root) and not force:
-        LOGGER.info("TinyStories cache already present; skipping.")
+    """Stream TinyStories from HuggingFace and write a compact local cache.
+
+    A cache built with fewer than ``train_chars`` characters is treated as
+    stale and re-downloaded, even without ``force`` -- otherwise bumping
+    ``train_chars`` in a config silently keeps training on the old, smaller
+    corpus because the cache files already exist on disk.
+    """
+    if tinystories_ready(data_root, min_train_chars=train_chars) and not force:
+        LOGGER.info("TinyStories cache already present (>= %d chars); skipping.", train_chars)
         return
 
     LOGGER.info(
@@ -321,7 +360,14 @@ def download_cifar100(data_root: str, force: bool = False) -> None:
     CIFAR100(root=data_root, train=False, download=True)
 
 
-def download_tiny_imagenet(data_root: str, force: bool = False) -> None:
+def download_tiny_imagenet(data_root: str, force: bool = False, max_retries: int = 3) -> None:
+    """Download Tiny ImageNet, retrying on transient connection drops.
+
+    The Stanford CS231n server (plain HTTP, no CDN) periodically resets
+    connections partway through the ~240MB zip -- especially noticeable from
+    cloud-GPU datacenter IPs. Retrying the whole ``download_and_extract_archive``
+    call (which itself resumes/overwrites cleanly) is the simplest reliable fix.
+    """
     if tiny_imagenet_ready(data_root) and not force:
         LOGGER.info("Tiny ImageNet already present; skipping.")
         return
@@ -329,20 +375,77 @@ def download_tiny_imagenet(data_root: str, force: bool = False) -> None:
 
     os.makedirs(data_root, exist_ok=True)
     LOGGER.info("Downloading Tiny ImageNet (~240 MB zip) -> %s", data_root)
-    download_and_extract_archive(TINY_IMAGENET_URL, download_root=data_root)
-    reorganize_tiny_imagenet_val(os.path.join(data_root, TINY_IMAGENET_DIR, "val"))
+
+    last_exc: Optional[Exception] = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            download_and_extract_archive(TINY_IMAGENET_URL, download_root=data_root)
+            reorganize_tiny_imagenet_val(os.path.join(data_root, TINY_IMAGENET_DIR, "val"))
+            return
+        except Exception as exc:
+            last_exc = exc
+            LOGGER.warning(
+                "Tiny ImageNet download attempt %d/%d failed (%s).", attempt, max_retries, exc
+            )
+    raise RuntimeError(
+        f"Tiny ImageNet download failed after {max_retries} attempts."
+    ) from last_exc
 
 
-def download_celeba(data_root: str, force: bool = False) -> None:
+def download_celeba(data_root: str, force: bool = False, source: str = "huggingface") -> None:
+    """Download CelebA.
+
+    ``source="huggingface"`` (default) pulls the image archive from the
+    HuggingFace Hub, which is far more reliable and faster than
+    torchvision's Google Drive backend -- Drive frequently returns
+    "quota exceeded" from datacenter/cloud-GPU IP ranges (RunPod, Vast.ai,
+    etc.) and throttles large files even when it works. ``source="google_drive"``
+    keeps the old torchvision behavior as a fallback.
+    """
     if celeba_ready(data_root) and not force:
         LOGGER.info("CelebA already present; skipping.")
         return
-    from torchvision.datasets import CelebA
 
     os.makedirs(data_root, exist_ok=True)
+
+    if source == "huggingface":
+        try:
+            _download_celeba_hf(data_root, force=force)
+            return
+        except Exception as exc:
+            LOGGER.warning(
+                "HuggingFace CelebA download failed (%s); falling back to torchvision/Google Drive.",
+                exc,
+            )
+
+    from torchvision.datasets import CelebA
+
     LOGGER.info("Downloading CelebA (~1.3 GB; may take a while) -> %s", data_root)
     for split in ("train", "valid", "test"):
         CelebA(root=data_root, split=split, target_type=[], download=True)
+
+
+def _download_celeba_hf(data_root: str, force: bool = False) -> None:
+    """Fetch CelebA image archive from the HuggingFace Hub (multi-threaded).
+
+    Uses ``huggingface_hub``'s ``hf_hub_download`` / ``snapshot_download``,
+    which supports resumable, parallel-chunk transfers via ``hf_transfer``
+    when installed (``pip install hf_transfer`` and set
+    ``HF_HUB_ENABLE_HF_TRANSFER=1`` for max throughput on cloud GPUs).
+    """
+    from huggingface_hub import snapshot_download
+
+    base = os.path.join(data_root, CELEBA_DIR)
+    os.makedirs(base, exist_ok=True)
+
+    LOGGER.info("Downloading CelebA from HuggingFace Hub (nielsr/CelebA-faces) -> %s", base)
+    snapshot_download(
+        repo_id="nielsr/CelebA-faces",
+        repo_type="dataset",
+        local_dir=base,
+        max_workers=8,  # parallel file downloads
+    )
+    LOGGER.info("CelebA (HuggingFace) download complete: %s", base)
 
 
 def download_all(
@@ -365,7 +468,7 @@ def download_all(
         )
     else:
         try:
-            download_celeba(data_root, force=force)
+            download_celeba(data_root, force=force, source="huggingface")
         except Exception as exc:
             LOGGER.error(
                 "CelebA download failed (%s). Diffusion may fall back to synthetic data.", exc
