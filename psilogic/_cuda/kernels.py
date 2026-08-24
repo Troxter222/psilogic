@@ -176,9 +176,9 @@ if _HAS_TRITON:
 
     @triton.jit
     def _fused_step_kernel(
-        grad_ptr,       # gradient used for the moment/variance EMA (post-AGC,
-                        # post-python-side centralize if any)
-        raw_grad_ptr,   # gradient used for quantum decay (post-AGC, pre-centralize)
+        grad_ptr,  # gradient used for the moment/variance EMA (post-AGC,
+        # post-python-side centralize if any)
+        raw_grad_ptr,  # gradient used for quantum decay (post-AGC, pre-centralize)
         p_ptr,
         m_ptr,
         v_ptr,

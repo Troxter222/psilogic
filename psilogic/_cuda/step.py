@@ -6,7 +6,6 @@ import math
 from typing import Any, Callable
 
 import torch
-import torch.distributed as dist
 
 from psilogic._chaos import (
     auto_gamma,
