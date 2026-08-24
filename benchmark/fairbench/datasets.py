@@ -387,9 +387,7 @@ def download_tiny_imagenet(data_root: str, force: bool = False, max_retries: int
             LOGGER.warning(
                 "Tiny ImageNet download attempt %d/%d failed (%s).", attempt, max_retries, exc
             )
-    raise RuntimeError(
-        f"Tiny ImageNet download failed after {max_retries} attempts."
-    ) from last_exc
+    raise RuntimeError(f"Tiny ImageNet download failed after {max_retries} attempts.") from last_exc
 
 
 def download_celeba(data_root: str, force: bool = False, source: str = "huggingface") -> None:
