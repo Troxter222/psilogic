@@ -760,21 +760,21 @@ class PsiLogic(Optimizer):
         compiling = _is_compiling()
 
         for group in self.param_groups:
-            # Under torch.compile, avoid reading ``p.grad`` for path selection —
-            # Dynamo on PyTorch 2.2.x cannot graph-break on ``Parameter.grad``
-            # (``tensor grad``). Fused/foreach are not compile-safe anyway, so
-            # always take the scalar path while compiling.
+            # Path selection must not read ``Parameter.grad``: Dynamo on
+            # PyTorch 2.2.x raises ``Unsupported: tensor grad`` even when
+            # ``is_compiling()`` returns False during tracing. Device checks
+            # alone are enough — foreach/fused skip params with ``grad is None``.
             if compiling:
                 self._step_scalar(group)
                 continue
 
-            has_cuda_grad = any(p.is_cuda for p in group["params"] if p.grad is not None)
+            has_cuda = any(p.is_cuda for p in group["params"])
             use_fused = (
                 self._use_fused_cuda
                 and group.get("use_fused_cuda", self._use_fused_cuda)
-                and has_cuda_grad
+                and has_cuda
             )
-            use_foreach = group["use_foreach"] and _FOREACH_AVAILABLE and has_cuda_grad
+            use_foreach = group["use_foreach"] and _FOREACH_AVAILABLE and has_cuda
             if use_fused:
                 self._step_fused_cuda(group)
             elif use_foreach:
