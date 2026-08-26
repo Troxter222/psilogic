@@ -14,6 +14,7 @@ def _base_defaults(
     agc_clip: float,
     total_steps: int,
     weight_decay: float = 1e-4,
+    grad_centralize: bool = False,
 ) -> dict[str, Any]:
     return {
         "betas": (0.9, 0.999),
@@ -22,7 +23,7 @@ def _base_defaults(
         "p_ext": 1.0,
         "quantum_decay": quantum_decay,
         "eps": 1e-8,
-        "grad_centralize": True,
+        "grad_centralize": grad_centralize,
         "chaos_tau": 0.40,
         "chaos_warmup": -1,
         "adaptive_tau": True,
@@ -35,13 +36,18 @@ def _base_defaults(
 
 
 def nlp_defaults(total_steps: int = 0) -> dict[str, Any]:
-    """Hyperparameters for transformer fine-tuning (BERT, RoBERTa, etc.)."""
+    """Hyperparameters for transformer fine-tuning (BERT, RoBERTa, etc.).
+
+    Mild AGC + grad centralization — opt-in extras beyond the plain
+    ``PsiLogic(...)`` constructor defaults.
+    """
     return _base_defaults(
         gamma=0.03,
         quantum_decay=2e-4,
         tau_scale=2.0,
         max_cancel=0.05,
         agc_clip=0.01,
+        grad_centralize=True,
         total_steps=total_steps,
     )
 
@@ -51,7 +57,7 @@ def vision_defaults(total_steps: int = 0) -> dict[str, Any]:
 
     Pair with ``vit_param_groups`` for transformer-based vision models so
     patch embeddings receive minimal cancellation (γ=0.005) while attention
-    and MLP blocks get the full treatment.
+    and MLP blocks get the full treatment. Enables AGC + centralize.
     """
     return _base_defaults(
         gamma=0.04,
@@ -59,6 +65,7 @@ def vision_defaults(total_steps: int = 0) -> dict[str, Any]:
         tau_scale=2.5,
         max_cancel=0.04,
         agc_clip=0.02,
+        grad_centralize=True,
         total_steps=total_steps,
     )
 
@@ -66,20 +73,21 @@ def vision_defaults(total_steps: int = 0) -> dict[str, Any]:
 def gpt_scratch_defaults(total_steps: int = 0) -> dict[str, Any]:
     """Hyperparameters for language model training from scratch.
 
-    ``chaos_warmup=-1`` auto-scales the warmup to ``max(500, steps // 20)``
-    so chaos never fires into raw from-scratch gradient noise. Pass the real
-    ``total_steps`` to enable both the warmup auto-scale and cosine γ decay.
+    Matches the plain drop-in (no AGC / no grad centralize); FairBench
+    NLP follow-ups showed those extras hurt TinyStories GPT-scratch vs AdamW.
+    ``chaos_warmup=-1`` auto-scales the warmup to ``max(500, steps // 20)``.
+    Pass the real ``total_steps`` for warmup auto-scale and cosine γ decay.
     """
-    defaults = _base_defaults(
+    return _base_defaults(
         gamma=0.02,
         quantum_decay=0.0,
         tau_scale=3.0,
         max_cancel=0.03,
-        agc_clip=0.01,
+        agc_clip=0.0,
+        grad_centralize=False,
         total_steps=total_steps,
         weight_decay=1e-1,
     )
-    return defaults
 
 
 def whisper_defaults(total_steps: int = 0) -> dict[str, Any]:
@@ -94,6 +102,7 @@ def whisper_defaults(total_steps: int = 0) -> dict[str, Any]:
         tau_scale=2.0,
         max_cancel=0.04,
         agc_clip=0.01,
+        grad_centralize=True,
         total_steps=total_steps,
         weight_decay=1e-2,
     )
@@ -107,6 +116,7 @@ def glue_defaults(total_steps: int = 0) -> dict[str, Any]:
         tau_scale=2.0,
         max_cancel=0.05,
         agc_clip=0.01,
+        grad_centralize=True,
         total_steps=total_steps,
         weight_decay=1e-2,
     )

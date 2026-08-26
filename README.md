@@ -69,13 +69,18 @@ psilogic-pkg/
 
 ```python
 # Before
-from torch.optim import Adam
-optimizer = Adam(model.parameters(), lr=1e-3)
+from torch.optim import AdamW
+optimizer = AdamW(model.parameters(), lr=1e-3)
 
 # After — one line change, nothing else
 from psilogic import PsiLogic
 optimizer = PsiLogic(model.parameters(), lr=1e-3)
 ```
+
+Defaults leave AGC and grad centralization off (plain drop-in). Optional task
+helpers still exist when you want them: ``PsiLogicNLP``, ``PsiLogicGPT``,
+``PsiLogicViT``, ``PsiLogic.auto(model)``, or kwargs such as
+``agc_clip=0.01, grad_centralize=True``.
 
 ---
 
@@ -182,20 +187,23 @@ optimizer = PsiLogic(
     p_ext          = 1.0,     # chaos amplification factor
     quantum_decay  = 0.0,     # adaptive per-weight decay (0 = disabled)
     eps            = 1e-8,
-    grad_centralize = True,   # gradient centralization (recommended)
+    grad_centralize = False,  # off by default; task presets may enable
     chaos_tau      = 0.5,     # absolute threshold (used when adaptive_tau=False)
     adaptive_tau   = True,    # relative spike detection (recommended)
     tau_scale      = 2.0,     # fast/slow ratio to trigger chaos
     max_cancel     = 0.05,    # hard clamp on per-step weight shrinkage
-    agc_clip       = 0.02,    # adaptive gradient clipping ratio
+    agc_clip       = 0.0,     # adaptive grad clip (0 = off; ViT/NLP presets enable)
     gamma_T_max    = 0,       # cosine γ decay over N steps (0 = disabled)
     use_foreach    = True,    # batched CUDA foreach fallback
     use_fused_cuda = True,    # Triton fused step when CUDA+Triton available
 )
 ```
 
-### Task-Specific Presets
+### Task-Specific Presets (optional)
 
+Most users only need ``PsiLogic(model.parameters(), lr=...)``. The helpers below
+apply architecture-friendly knobs (param groups, mild AGC, etc.) when you want
+them:
 ```python
 from psilogic import PsiLogicNLP, PsiLogicGPT, PsiLogicViT
 

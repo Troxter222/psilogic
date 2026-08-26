@@ -131,7 +131,9 @@ class PsiLogic(Optimizer):
         p_ext: Chaos amplification factor. Default: ``1.0``.
         quantum_decay: Secondary decay coefficient; ``0.0`` disables. Default: ``0.0``.
         eps: Numerical stability epsilon. Default: ``1e-8``.
-        grad_centralize: Subtract spatial mean from gradients. Default: ``True``.
+        grad_centralize: Subtract spatial mean from gradients. Default: ``False``
+            (plain drop-in). Opt in with ``True``, or use a task preset such as
+            ``PsiLogicViT`` / ``vision_defaults``.
         chaos_tau: Absolute slow-EMA threshold when ``adaptive_tau=False``.
         chaos_warmup: Warmup steps before chaos activates; ``-1`` auto-scales
             to ``max(500, gamma_T_max // 20)``. Chaos then ramps in linearly
@@ -139,7 +141,8 @@ class PsiLogic(Optimizer):
         adaptive_tau: Gate chaos on fast/slow ratio instead of absolute norm.
         tau_scale: Required fast/slow ratio in adaptive mode. Default: ``2.0``.
         max_cancel: Hard cap on per-step fractional shrinkage. Default: ``0.05``.
-        agc_clip: Adaptive gradient clipping ratio; ``0.0`` disables.
+        agc_clip: Adaptive gradient clipping ratio; ``0.0`` disables (default).
+            Task presets may enable a small clip (e.g. ViT).
         gamma_T_max: Total steps for cosine γ schedule; ``0`` disables.
         use_foreach: Batched CUDA ops via ``torch._foreach_*``. Falls back to
             the scalar path automatically when foreach ops are unavailable.
@@ -166,13 +169,13 @@ class PsiLogic(Optimizer):
         p_ext: float = 1.0,
         quantum_decay: float = 0.0,
         eps: float = 1e-8,
-        grad_centralize: bool = True,
+        grad_centralize: bool = False,
         chaos_tau: float = 0.5,
         chaos_warmup: int = -1,
         adaptive_tau: bool = True,
         tau_scale: float = 2.0,
         max_cancel: float = 0.05,
-        agc_clip: float = 0.02,
+        agc_clip: float = 0.0,
         gamma_T_max: int = 0,
         use_foreach: bool = True,
         use_fused_cuda: bool = True,

@@ -220,13 +220,20 @@ class NLPArena(Arena):
         return {"val_loss": avg, "perplexity": ppl}
 
     def psilogic_kwargs(self) -> dict[str, Any]:
-        # Mirrors psilogic's GPT-from-scratch preset (minus lr/wd which the
-        # factory injects). Conservative chaos for unstable from-scratch LM.
-        return dict(
+        # Bare GPT-scratch defaults (match PsiLogic constructor / gpt_scratch
+        # preset): no AGC, no grad centralize — FairBench follow-ups showed
+        # those extras hurt TinyStories vs AdamW. Conservative tau for LM.
+        kwargs = dict(
             gamma=0.02,
             chaos_tau=0.40,
             adaptive_tau=True,
             tau_scale=3.0,
             max_cancel=0.03,
-            agc_clip=0.01,
+            agc_clip=0.0,
+            grad_centralize=False,
         )
+        # Optional per-run overrides (ablation / hyperparam sweeps).
+        overrides = self.extra.get("psilogic_overrides")
+        if isinstance(overrides, dict) and overrides:
+            kwargs.update(overrides)
+        return kwargs
