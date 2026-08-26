@@ -37,6 +37,7 @@ except ImportError:  # pragma: no cover - torch < 2.1
     def _is_compiling() -> bool:
         return False
 
+
 _STATE_DICT_SCHEMA_KEY = "psilogic_schema"
 _STATE_DICT_SCHEMA_VERSION = 2
 
@@ -759,12 +760,19 @@ class PsiLogic(Optimizer):
         compiling = _is_compiling()
 
         for group in self.param_groups:
+            # Under torch.compile, avoid reading ``p.grad`` for path selection —
+            # Dynamo on PyTorch 2.2.x cannot graph-break on ``Parameter.grad``
+            # (``tensor grad``). Fused/foreach are not compile-safe anyway, so
+            # always take the scalar path while compiling.
+            if compiling:
+                self._step_scalar(group)
+                continue
+
             has_cuda_grad = any(p.is_cuda for p in group["params"] if p.grad is not None)
             use_fused = (
                 self._use_fused_cuda
                 and group.get("use_fused_cuda", self._use_fused_cuda)
                 and has_cuda_grad
-                and not compiling
             )
             use_foreach = group["use_foreach"] and _FOREACH_AVAILABLE and has_cuda_grad
             if use_fused:
