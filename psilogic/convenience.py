@@ -120,6 +120,10 @@ class PsiLogicNLP(PsiLogic):
 
     Accepts either a parameter iterable or a full ``nn.Module`` — in the
     latter case ``nlp_param_groups`` is applied automatically.
+
+    Optional convenience over plain ``PsiLogic(...)``: mild AGC, grad
+    centralize, and encoder-friendly gamma / quantum decay. Most users can
+    stay on ``PsiLogic(model.parameters(), lr=...)``.
     """
 
     def __init__(
@@ -134,6 +138,7 @@ class PsiLogicNLP(PsiLogic):
         kwargs.setdefault("chaos_warmup", -1)
         kwargs.setdefault("quantum_decay", 2e-4)
         kwargs.setdefault("agc_clip", 0.01)
+        kwargs.setdefault("grad_centralize", True)
         kwargs.setdefault("adaptive_tau", True)
         kwargs.setdefault("tau_scale", 2.0)
         kwargs.setdefault("max_cancel", 0.05)
@@ -148,6 +153,10 @@ class PsiLogicGPT(PsiLogic):
     Accepts either a parameter iterable or a full ``nn.Module`` — in the
     latter case ``gpt_param_groups`` is applied automatically (embeddings
     γ=0.005 with no quantum decay, blocks γ=0.02, LM head γ=0.01).
+
+    Uses the bare GPT-scratch knobs (no AGC / no grad centralize), matching
+    ``PsiLogic(params, lr=...)`` extras. Pass ``agc_clip=...`` /
+    ``grad_centralize=True`` to opt back in.
     """
 
     def __init__(
@@ -162,7 +171,8 @@ class PsiLogicGPT(PsiLogic):
         kwargs.setdefault("chaos_warmup", -1)
         kwargs.setdefault("quantum_decay", 0.0)
         kwargs.setdefault("weight_decay", 0.1)
-        kwargs.setdefault("agc_clip", 0.01)
+        kwargs.setdefault("agc_clip", 0.0)
+        kwargs.setdefault("grad_centralize", False)
         kwargs.setdefault("adaptive_tau", True)
         kwargs.setdefault("tau_scale", 3.0)
         kwargs.setdefault("max_cancel", 0.03)
@@ -194,6 +204,7 @@ class PsiLogicViT(PsiLogic):
         kwargs.setdefault("chaos_warmup", -1)
         kwargs.setdefault("quantum_decay", 0.0)
         kwargs.setdefault("agc_clip", 0.02)
+        kwargs.setdefault("grad_centralize", True)
         kwargs.setdefault("adaptive_tau", True)
         kwargs.setdefault("tau_scale", 2.5)
         kwargs.setdefault("max_cancel", 0.04)

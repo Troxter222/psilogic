@@ -6,6 +6,16 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Safer drop-in defaults** — ``PsiLogic(params, lr=...)`` now uses
+  ``agc_clip=0.0`` and ``grad_centralize=False`` (previously ``0.02`` / ``True``).
+  FairBench NLP follow-ups showed AGC + centralize hurt TinyStories GPT-scratch
+  vs AdamW; the bare drop-in wins on that setup. Opt back in via kwargs or
+  task helpers (``PsiLogicNLP`` / ``PsiLogicViT`` / ``vision_defaults`` still
+  enable mild AGC + centralize). ``gpt_scratch_defaults`` / ``PsiLogicGPT`` /
+  FairBench NLP arena aligned with the bare defaults.
+
 ## [0.5.0] — 2026-07
 
 ### Added
