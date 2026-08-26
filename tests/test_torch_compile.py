@@ -9,7 +9,16 @@ import torch.nn as nn
 from psilogic import PsiLogic
 
 
+def _torch_version_tuple() -> tuple[int, int]:
+    major, minor, *_rest = torch.__version__.split("+")[0].split(".")
+    return int(major), int(minor)
+
+
 @pytest.mark.skipif(not hasattr(torch, "compile"), reason="torch.compile not available")
+@pytest.mark.skipif(
+    _torch_version_tuple() < (2, 3),
+    reason="Dynamo cannot read Parameter.grad under fullgraph on torch < 2.3",
+)
 def test_torch_compile_fullgraph() -> None:
     model = nn.Sequential(nn.Linear(10, 10), nn.ReLU(), nn.Linear(10, 2))
     if torch.cuda.is_available():
