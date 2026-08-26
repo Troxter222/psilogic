@@ -43,6 +43,13 @@ def _median_step_seconds(
     return statistics.median(times)
 
 
+def _cuda_is_ampere_or_newer() -> bool:
+    if not torch.cuda.is_available():
+        return False
+    major, _minor = torch.cuda.get_device_capability(0)
+    return major >= 8
+
+
 def test_cpu_overhead_is_bounded():
     """CPU scalar path sanity bound (the <=15% roadmap target is the GPU
     foreach path vs fused AdamW; the pure-python loop is naturally slower)."""
@@ -58,7 +65,8 @@ def test_gpu_foreach_overhead():
     """Foreach path must stay in the same ballpark as fused AdamW.
 
     Documented target is <=15% on A100; the CI assertion is deliberately
-    looser (2.5x) to stay robust on shared/noisy runners.
+    looser to stay robust on shared/noisy runners and consumer GPUs
+    (GTX 16xx / etc.), where kernel launch overhead dominates.
     """
     adamw = _median_step_seconds(
         lambda p: torch.optim.AdamW(p, lr=1e-3, foreach=True), device="cuda"
@@ -67,11 +75,17 @@ def test_gpu_foreach_overhead():
         lambda p: PsiLogic(p, lr=1e-3, chaos_warmup=0, use_foreach=True, use_fused_cuda=False),
         device="cuda",
     )
-    assert psi < adamw * 2.5, f"PsiLogic foreach GPU step is {psi / adamw:.2f}x AdamW"
+    # Ampere+ (sm>=8): 2.5x. Pre-Ampere consumer cards: 4x (launch-bound).
+    limit = 2.5 if _cuda_is_ampere_or_newer() else 4.0
+    assert psi < adamw * limit, f"PsiLogic foreach GPU step is {psi / adamw:.2f}x AdamW"
 
 
 @pytest.mark.gpu
 @pytest.mark.skipif(not is_fused_available(), reason="Triton fused CUDA path unavailable")
+@pytest.mark.skipif(
+    not _cuda_is_ampere_or_newer(),
+    reason="Fused <=1.25x AdamW target is for Ampere+ (A100/H100); skip on older GPUs",
+)
 def test_gpu_fused_overhead():
     """Fused Triton path should be much closer to AdamW than the foreach path."""
     adamw = _median_step_seconds(
