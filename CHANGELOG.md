@@ -6,6 +6,8 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-08-26
+
 ### Changed
 
 - **Safer drop-in defaults** — ``PsiLogic(params, lr=...)`` now uses
