@@ -27,6 +27,17 @@ from ._chaos import (
     update_gradient_norm_ema_batched,
 )
 
+# Resolve once at import time. Calling ``getattr(torch.compiler, "is_compiling", …)``
+# inside ``step()`` breaks ``torch.compile(fullgraph=True)`` on PyTorch 2.2.x
+# (Dynamo traces the getattr/hasattr and raises).
+try:
+    from torch.compiler import is_compiling as _is_compiling
+except ImportError:  # pragma: no cover - torch < 2.1
+
+    def _is_compiling() -> bool:
+        return False
+
+
 _STATE_DICT_SCHEMA_KEY = "psilogic_schema"
 _STATE_DICT_SCHEMA_VERSION = 2
 
@@ -746,17 +757,24 @@ class PsiLogic(Optimizer):
 
         t_start = time.perf_counter() if self._profile_step_time else 0.0
 
-        is_compiling = getattr(torch.compiler, "is_compiling", lambda: False)()
+        compiling = _is_compiling()
 
         for group in self.param_groups:
-            has_cuda_grad = any(p.is_cuda for p in group["params"] if p.grad is not None)
+            # Path selection must not read ``Parameter.grad``: Dynamo on
+            # PyTorch 2.2.x raises ``Unsupported: tensor grad`` even when
+            # ``is_compiling()`` returns False during tracing. Device checks
+            # alone are enough — foreach/fused skip params with ``grad is None``.
+            if compiling:
+                self._step_scalar(group)
+                continue
+
+            has_cuda = any(p.is_cuda for p in group["params"])
             use_fused = (
                 self._use_fused_cuda
                 and group.get("use_fused_cuda", self._use_fused_cuda)
-                and has_cuda_grad
-                and not is_compiling
+                and has_cuda
             )
-            use_foreach = group["use_foreach"] and _FOREACH_AVAILABLE and has_cuda_grad
+            use_foreach = group["use_foreach"] and _FOREACH_AVAILABLE and has_cuda
             if use_fused:
                 self._step_fused_cuda(group)
             elif use_foreach:

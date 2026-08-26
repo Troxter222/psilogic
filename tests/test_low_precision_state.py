@@ -23,13 +23,23 @@ def _tiny_model(dtype: torch.dtype) -> nn.Sequential:
     return nn.Sequential(nn.Linear(10, 10), nn.ReLU(), nn.Linear(10, 2)).to(dtype)
 
 
+def _mse_loss(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    """MSE in FP32 so CPU CI works for FP16/BF16 params on older PyTorch.
+
+    ``mse_cpu`` / ``mse_backward_cpu`` lack Half/BFloat16 kernels on torch
+    2.2.x; casting only the loss keeps parameters in low precision (the
+    behavior under test) without requiring CUDA.
+    """
+    return nn.MSELoss()(pred.float(), target.float())
+
+
 def test_state_is_fp32_for_fp16_params() -> None:
     model = _tiny_model(torch.float16)
     opt = PsiLogic(model.parameters(), lr=1e-3, use_foreach=False)
 
     x = torch.randn(4, 10, dtype=torch.float16)
     y = torch.randn(4, 2, dtype=torch.float16)
-    loss = nn.MSELoss()(model(x), y)
+    loss = _mse_loss(model(x), y)
     loss.backward()
     opt.step()
 
@@ -48,7 +58,7 @@ def test_state_is_fp32_for_bf16_params() -> None:
 
     x = torch.randn(4, 10, dtype=torch.bfloat16)
     y = torch.randn(4, 2, dtype=torch.bfloat16)
-    loss = nn.MSELoss()(model(x), y)
+    loss = _mse_loss(model(x), y)
     loss.backward()
     opt.step()
 
@@ -65,7 +75,7 @@ def test_fp32_params_state_dtype_unchanged() -> None:
 
     x = torch.randn(4, 10)
     y = torch.randn(4, 2)
-    loss = nn.MSELoss()(model(x), y)
+    loss = _mse_loss(model(x), y)
     loss.backward()
     opt.step()
 
@@ -93,11 +103,10 @@ def test_fp16_training_runs_without_dtype_errors() -> None:
     )
     x = torch.randn(4, 10, dtype=torch.float16)
     y = torch.randn(4, 2, dtype=torch.float16)
-    criterion = nn.MSELoss()
 
     for _ in range(10):
         opt.zero_grad()
-        loss = criterion(model(x), y)
+        loss = _mse_loss(model(x), y)
         loss.backward()
         opt.step()
 
@@ -117,11 +126,10 @@ def test_fp16_lion_mode_runs_without_dtype_errors() -> None:
     )
     x = torch.randn(4, 10, dtype=torch.float16)
     y = torch.randn(4, 2, dtype=torch.float16)
-    criterion = nn.MSELoss()
 
     for _ in range(10):
         opt.zero_grad()
-        loss = criterion(model(x), y)
+        loss = _mse_loss(model(x), y)
         loss.backward()
         opt.step()
 
@@ -137,7 +145,7 @@ def test_checkpoint_roundtrip_preserves_fp32_state() -> None:
     opt = PsiLogic(model.parameters(), lr=1e-3, use_foreach=False)
     x = torch.randn(4, 10, dtype=torch.float16)
     y = torch.randn(4, 2, dtype=torch.float16)
-    loss = nn.MSELoss()(model(x), y)
+    loss = _mse_loss(model(x), y)
     loss.backward()
     opt.step()
 
@@ -161,6 +169,6 @@ def test_checkpoint_roundtrip_preserves_fp32_state() -> None:
 
     # And a further step must still run without raising a dtype error.
     opt2.zero_grad()
-    loss2 = nn.MSELoss()(model2(x), y)
+    loss2 = _mse_loss(model2(x), y)
     loss2.backward()
     opt2.step()
