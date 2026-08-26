@@ -29,13 +29,25 @@ class TinyViTLike(nn.Module):
         return self.head(x)
 
 
+def _snapshot_state(model: nn.Module) -> dict[str, torch.Tensor]:
+    """Deep-copy parameters so later optimizer steps do not poison comparisons."""
+    return {k: v.detach().clone() for k, v in model.state_dict().items()}
+
+
+def _restore_state(model: nn.Module, snapshot: dict[str, torch.Tensor]) -> None:
+    model.load_state_dict(snapshot)
+
+
 def _median_step_ms(
     factory: Callable[[], torch.optim.Optimizer],
     model: nn.Module,
     device: str,
+    *,
+    init_state: dict[str, torch.Tensor],
     n_warmup: int = 10,
     n_timed: int = 50,
 ) -> float:
+    _restore_state(model, init_state)
     opt = factory()
     crit = nn.CrossEntropyLoss()
     x = torch.randn(32, 128, device=device)
@@ -57,7 +69,14 @@ def _median_step_ms(
     return statistics.median(times)
 
 
-def _profile_psilogic(model: nn.Module, device: str, fused: bool) -> None:
+def _profile_psilogic(
+    model: nn.Module,
+    device: str,
+    fused: bool,
+    *,
+    init_state: dict[str, torch.Tensor],
+) -> None:
+    _restore_state(model, init_state)
     opt = PsiLogic(
         model.parameters(),
         lr=3e-4,
@@ -108,11 +127,13 @@ def main() -> None:
 
     torch.manual_seed(0)
     model = TinyViTLike(depth=args.depth).to(args.device)
+    init_state = _snapshot_state(model)
 
     adamw_ms = _median_step_ms(
         lambda: torch.optim.AdamW(model.parameters(), lr=3e-4, foreach=args.device == "cuda"),
         model,
         args.device,
+        init_state=init_state,
     )
     psi_foreach_ms = _median_step_ms(
         lambda: PsiLogic(
@@ -125,6 +146,7 @@ def main() -> None:
         ),
         model,
         args.device,
+        init_state=init_state,
     )
 
     print(f"Device: {args.device}")
@@ -147,14 +169,15 @@ def main() -> None:
             ),
             model,
             args.device,
+            init_state=init_state,
         )
         print(
             f"PsiLogic (fused) median step: {psi_fused_ms:.3f} ms ({psi_fused_ms / adamw_ms:.2f}x)"
         )
         if args.profile:
-            _profile_psilogic(model, args.device, fused=True)
+            _profile_psilogic(model, args.device, fused=True, init_state=init_state)
     elif args.profile:
-        _profile_psilogic(model, args.device, fused=False)
+        _profile_psilogic(model, args.device, fused=False, init_state=init_state)
 
 
 if __name__ == "__main__":
