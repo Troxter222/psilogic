@@ -145,6 +145,22 @@ def _mixed_shape_model() -> nn.Sequential:
     )
 
 
+class TinyViTLike(nn.Module):
+    """Many small Linear/LN tensors, matching ``scripts/profile_optimizer.py``."""
+
+    def __init__(self, depth: int = 12, dim: int = 64) -> None:
+        super().__init__()
+        self.layers = nn.ModuleList(
+            [nn.Sequential(nn.Linear(dim, dim), nn.LayerNorm(dim), nn.GELU()) for _ in range(depth)]
+        )
+        self.head = nn.Linear(dim, 10)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        for layer in self.layers:
+            x = x + layer(x)
+        return self.head(x)
+
+
 @pytest.mark.parametrize(
     "kwargs",
     [
@@ -289,21 +305,131 @@ def test_fused_lion_matches_scalar_cuda() -> None:
 
 @pytest.mark.gpu
 @pytest.mark.skipif(not is_fused_available(), reason="Triton fused CUDA path unavailable")
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16], ids=["fp32", "bf16"])
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"lr": 1e-3, "gamma": 0.04, "grad_centralize": True, "chaos_warmup": 0},
+        {"lr": 1e-3, "gamma": 0.04, "agc_clip": 0.02, "chaos_warmup": 0},
+        {
+            "lr": 1e-3,
+            "gamma": 0.03,
+            "quantum_decay": 2e-4,
+            "agc_clip": 0.02,
+            "grad_centralize": True,
+            "chaos_warmup": 0,
+        },
+        {
+            "lr": 1e-3,
+            "betas": (0.8, 0.3),
+            "gamma": 0.03,
+            "lion_mode": True,
+            "grad_centralize": True,
+            "chaos_warmup": 0,
+        },
+    ],
+    ids=["centralize", "agc", "agc_centralize_qd", "lion_centralize"],
+)
+def test_fused_matches_scalar_feature_matrix_cuda(
+    dtype: torch.dtype, kwargs: dict[str, Any]
+) -> None:
+    def factory() -> nn.Sequential:
+        torch.manual_seed(23)
+        return nn.Sequential(nn.Linear(48, 32), nn.ReLU(), nn.Linear(32, 8))
+
+    _run_parity(
+        model_factory=factory,
+        kwargs=kwargs,
+        n_steps=40,
+        backend="fused",
+        device="cuda",
+        dtype=dtype,
+    )
+
+
+@pytest.mark.gpu
+@pytest.mark.skipif(not is_fused_available(), reason="Triton fused CUDA path unavailable")
+def test_fused_matches_scalar_mixed_shapes_cuda() -> None:
+    _run_parity(
+        model_factory=_mixed_shape_model,
+        kwargs={
+            "lr": 1e-3,
+            "gamma": 0.04,
+            "quantum_decay": 1e-4,
+            "agc_clip": 0.02,
+            "grad_centralize": True,
+            "chaos_warmup": 0,
+        },
+        n_steps=30,
+        backend="fused",
+        device="cuda",
+    )
+
+
+@pytest.mark.gpu
+@pytest.mark.skipif(not is_fused_available(), reason="Triton fused CUDA path unavailable")
+def test_fused_packed_chaos_state_dict_roundtrip_cuda() -> None:
+    """Packed ``fast``/``slow``/``gn_avg`` views must round-trip through ``state_dict``."""
+    torch.manual_seed(3)
+    model = nn.Sequential(nn.Linear(16, 16), nn.ReLU(), nn.Linear(16, 4)).cuda()
+    opt = PsiLogic(
+        model.parameters(),
+        lr=1e-3,
+        gamma=0.04,
+        chaos_warmup=0,
+        use_fused_cuda=True,
+        use_foreach=False,
+    )
+    x = torch.randn(8, 16, device="cuda")
+    y = torch.randn(8, 4, device="cuda")
+    crit = nn.MSELoss()
+    for _ in range(5):
+        opt.zero_grad()
+        crit(model(x), y).backward()
+        opt.step()
+
+    params = [p for p in model.parameters() if p.requires_grad]
+    states = [opt.state[p] for p in params]
+    from psilogic.optimizer import _as_packed_chaos_vector
+
+    assert _as_packed_chaos_vector(states, "fast") is not None
+    assert _as_packed_chaos_vector(states, "slow") is not None
+    assert _as_packed_chaos_vector(states, "gn_avg") is not None
+
+    sd = copy.deepcopy(opt.state_dict())
+    for param_state in sd["state"].values():
+        assert tuple(param_state["fast"].shape) == (1,)
+        assert tuple(param_state["slow"].shape) == (1,)
+        assert tuple(param_state["gn_avg"].shape) == (1,)
+
+    model2 = copy.deepcopy(model)
+    opt2 = PsiLogic(
+        model2.parameters(),
+        lr=1e-3,
+        gamma=0.04,
+        chaos_warmup=0,
+        use_fused_cuda=True,
+        use_foreach=False,
+    )
+    opt2.load_state_dict(sd)
+    _assert_state_close(opt, opt2)
+
+    for _ in range(3):
+        opt.zero_grad()
+        opt2.zero_grad()
+        loss = crit(model(x), y)
+        loss.backward()
+        for p1, p2 in zip(model.parameters(), model2.parameters()):
+            p2.grad = p1.grad.clone()
+        opt.step()
+        opt2.step()
+    _assert_state_close(opt, opt2)
+
+
+@pytest.mark.gpu
+@pytest.mark.skipif(not is_fused_available(), reason="Triton fused CUDA path unavailable")
 def test_fused_matches_scalar_vit_like_cuda() -> None:
     """Many-parameter model similar to ViT overhead profile."""
-
-    class TinyViTLike(nn.Module):
-        def __init__(self) -> None:
-            super().__init__()
-            self.layers = nn.ModuleList(
-                [nn.Sequential(nn.Linear(64, 64), nn.LayerNorm(64), nn.GELU()) for _ in range(12)]
-            )
-            self.head = nn.Linear(64, 10)
-
-        def forward(self, x: torch.Tensor) -> torch.Tensor:
-            for layer in self.layers:
-                x = x + layer(x)
-            return self.head(x)
 
     _run_parity(
         model_factory=TinyViTLike,

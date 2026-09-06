@@ -59,6 +59,35 @@ jobs:
       - name: Run tests
         run: pytest tests/ -v --tb=short
 
+  cross-platform:
+    name: Cross-platform / Py3.11
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          pip install --upgrade pip
+          TORCH_INDEX="https://download.pytorch.org/whl/cpu"
+          pip install torch torchvision --index-url "$TORCH_INDEX"
+          pip install -e ".[dev,hf]" --extra-index-url "$TORCH_INDEX"
+
+      - name: Lint
+        run: ruff check psilogic tests benchmark examples
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
+
   format-check:
     name: Format check
     runs-on: ubuntu-latest

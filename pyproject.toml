@@ -58,6 +58,9 @@ benchmark = [
 cuda = [
     "triton>=2.1; platform_system != 'Darwin'",
 ]
+deepspeed = [
+    "deepspeed>=0.14",
+]
 all = [
     "pytest>=7.0",
     "ruff>=0.4",

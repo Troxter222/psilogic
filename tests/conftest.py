@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 import torch
 import torch.nn as nn
+
+_DDP_WIN_SKIP = "DDP multiprocessing not supported on Windows CI"
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
@@ -14,6 +18,8 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
             item.add_marker(pytest.mark.skip(reason="CUDA not available"))
         if "multi_gpu" in item.keywords and torch.cuda.device_count() < 2:
             item.add_marker(pytest.mark.skip(reason="2+ CUDA devices required"))
+        if sys.platform == "win32" and "test_ddp.py" in item.nodeid:
+            item.add_marker(pytest.mark.skip(reason=_DDP_WIN_SKIP))
 
 
 @pytest.fixture
