@@ -614,9 +614,7 @@ class PsiLogic(Optimizer):
             chaos_gain = effective_warmup(step, gamma_t_max, warmup_cfg)
             disagree = None
             if chaos_gain > 0.0 and gamma_sched > 0:
-                disagree = grad_momentum_disagreement(
-                    grad, state["m"], g_norm, step=step, eps=eps
-                )
+                disagree = grad_momentum_disagreement(grad, state["m"], g_norm, step=step, eps=eps)
 
             if not lion:
                 state["m"].mul_(beta1).add_(grad, alpha=1.0 - beta1)
