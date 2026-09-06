@@ -30,6 +30,7 @@ full runnable torchtune recipe. Copy it into your config and set `lr`, `gamma`, 
 import lightning as L
 from psilogic.integrations.lightning import configure_psilogic, ChaosMonitorCallback
 
+
 class LitModel(L.LightningModule):
     def __init__(self, model):
         super().__init__()
@@ -42,6 +43,7 @@ class LitModel(L.LightningModule):
             lr=3e-4,
             total_steps=int(self.trainer.estimated_stepping_batches),
         )
+
 
 trainer = L.Trainer(callbacks=[ChaosMonitorCallback(log_every_n_steps=100)])
 # trainer.fit(LitModel(model), train_dataloader)
