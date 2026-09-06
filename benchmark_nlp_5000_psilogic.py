@@ -36,8 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     print(
-        "WARNING: benchmark_nlp_5000_psilogic.py is deprecated; "
-        "forwarding to FairBench NLP arena.",
+        "WARNING: benchmark_nlp_5000_psilogic.py is deprecated; forwarding to FairBench NLP arena.",
         file=sys.stderr,
     )
 
