@@ -100,9 +100,8 @@ jobs:
           python-version: "3.11"
 
       - name: Install ruff
-        # Pin to the same major line as local/dev so format check does not
-        # drift when pip resolves a brand-new ruff release on the runner.
-        run: pip install "ruff>=0.4,<1"
+        # Pin minor so markdown/code-block formatting does not drift overnight.
+        run: pip install "ruff>=0.16,<0.17"
 
       - name: Check formatting
         run: ruff format --check psilogic tests benchmark examples scripts benchmark_nlp_5000_psilogic.py
