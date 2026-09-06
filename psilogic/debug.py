@@ -26,7 +26,8 @@ def chaos_stats(optimizer: PsiLogic) -> list[dict[str, Any]]:
             "fast_mean": 1.03,
             "slow_mean": 0.98,
             "ratio_mean": 1.05,
-            "spike_rate": 0.08,   # fraction of params currently gated as spiking
+            "soft_chaos_mean": 0.12,  # continuous trust-damping signal
+            "spike_rate": 0.08,       # fraction with soft_chaos > 0.5
         }
 
     Uninitialized parameters (no step taken yet) are skipped.
@@ -39,6 +40,7 @@ def chaos_stats(optimizer: PsiLogic) -> list[dict[str, Any]]:
         fasts: list[float] = []
         slows: list[float] = []
         ratios: list[float] = []
+        softs: list[float] = []
         spikes = 0
         step = 0
 
@@ -50,13 +52,11 @@ def chaos_stats(optimizer: PsiLogic) -> list[dict[str, Any]]:
             fasts.append(metrics["fast"])
             slows.append(metrics["slow"])
             ratios.append(metrics["ratio"])
+            soft = metrics["soft_chaos"]
+            softs.append(soft)
             step = max(step, int(metrics["step"]))
-
-            if group["adaptive_tau"]:
-                is_spike = metrics["fast"] > group["tau_scale"] * metrics["slow"] + group["eps"]
-            else:
-                is_spike = metrics["slow"] >= group["chaos_tau"]
-            spikes += int(is_spike)
+            # Diagnostic hard threshold on the continuous soft gate.
+            spikes += int(soft > 0.5)
 
         n = len(fasts)
         summary.append(
@@ -67,6 +67,7 @@ def chaos_stats(optimizer: PsiLogic) -> list[dict[str, Any]]:
                 "fast_mean": sum(fasts) / n if n else 0.0,
                 "slow_mean": sum(slows) / n if n else 0.0,
                 "ratio_mean": sum(ratios) / n if n else 0.0,
+                "soft_chaos_mean": sum(softs) / n if n else 0.0,
                 "spike_rate": spikes / n if n else 0.0,
             }
         )
