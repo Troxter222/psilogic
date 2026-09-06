@@ -56,9 +56,9 @@ def psilogic_chaos_metrics(optimizer: Optimizer) -> dict[str, float]:
         slow = sum(s["slow_mean"] * max(s.get("n_params", 1), 1) for s in stats) / total
         ratio = sum(s["ratio_mean"] * max(s.get("n_params", 1), 1) for s in stats) / total
         spike = sum(s["spike_rate"] * max(s.get("n_params", 1), 1) for s in stats) / total
-        soft = sum(
-            s.get("soft_chaos_mean", 0.0) * max(s.get("n_params", 1), 1) for s in stats
-        ) / total
+        soft = (
+            sum(s.get("soft_chaos_mean", 0.0) * max(s.get("n_params", 1), 1) for s in stats) / total
+        )
         return {
             "psi/fast_t": float(fast),
             "psi/slow_t": float(slow),

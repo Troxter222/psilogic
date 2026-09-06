@@ -42,9 +42,7 @@ def test_soft_chaos_rises_with_fast_slow_excess() -> None:
 
 def test_trust_less_than_one_when_chaos_high() -> None:
     soft = torch.tensor([0.8])
-    trust = trust_from_soft_chaos(
-        soft, gamma_eff=0.05, p_ext=1.0, chaos_gain=1.0, max_cancel=0.05
-    )
+    trust = trust_from_soft_chaos(soft, gamma_eff=0.05, p_ext=1.0, chaos_gain=1.0, max_cancel=0.05)
     assert float(trust) < 1.0
     assert float(trust) == pytest.approx(0.96, abs=1e-5)
 
@@ -89,7 +87,7 @@ def test_trust_damping_shrinks_update_vs_gamma_zero() -> None:
             opt.zero_grad()
             crit(model(x), y).backward()
         # Share grads so paths differ only by trust.
-        for p_a, p_b in zip(model_a.parameters(), model_b.parameters(), strict=True):
+        for p_a, p_b in zip(model_a.parameters(), model_b.parameters()):
             p_b.grad = p_a.grad.detach().clone()
         opt_damped.step()
         opt_plain.step()
@@ -101,7 +99,7 @@ def test_trust_damping_shrinks_update_vs_gamma_zero() -> None:
     opt_damped.zero_grad()
     opt_plain.zero_grad()
     crit(model_a(x), y_flip).backward()
-    for p_a, p_b in zip(model_a.parameters(), model_b.parameters(), strict=True):
+    for p_a, p_b in zip(model_a.parameters(), model_b.parameters()):
         p_b.grad = p_a.grad.detach().clone()
     opt_damped.step()
     opt_plain.step()
