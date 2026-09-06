@@ -39,12 +39,14 @@ class TestChaosStats:
             "fast_mean",
             "slow_mean",
             "ratio_mean",
+            "soft_chaos_mean",
             "spike_rate",
         ):
             assert key in entry
         assert entry["step"] == 5
         assert entry["n_params"] == sum(1 for _ in model.parameters())
         assert 0.0 <= entry["spike_rate"] <= 1.0
+        assert entry["soft_chaos_mean"] >= 0.0
         assert math.isfinite(entry["fast_mean"]) and entry["fast_mean"] > 0
 
     def test_empty_before_first_step(self):
@@ -79,6 +81,7 @@ class TestGetChaosMetrics:
             "slow": 0.0,
             "ratio": 0.0,
             "gn_avg": 0.0,
+            "soft_chaos": 0.0,
         }
 
 

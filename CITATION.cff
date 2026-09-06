@@ -1,18 +1,30 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
+type: software
 authors:
-- family-names: "Sultonov"
-  given-names: "Ali"
-title: "PsiLogic: Chaos-Aware Active Cancellation for Adam with a Fair Cross-Domain Benchmark"
-version: "1.0.0"
-date-released: "2026-07-21"
-url: "https://github.com/Troxter222/psilogic"
-preferred-citation:
-  type: generic
-  authors:
   - family-names: "Sultonov"
     given-names: "Ali"
+title: "PsiLogic: Chaos-Aware Active Cancellation for Adam with a Fair Cross-Domain Benchmark"
+version: "0.6.0"
+date-released: "2026-08-26"
+url: "https://github.com/Troxter222/psilogic"
+repository-code: "https://github.com/Troxter222/psilogic"
+license: MIT
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.18739857"
+  - type: arxiv
+    value: "2607.16268"
+preferred-citation:
+  type: article
+  authors:
+    - family-names: "Sultonov"
+      given-names: "Ali"
   title: "PsiLogic: Chaos-Aware Active Cancellation for Adam with a Fair Cross-Domain Benchmark"
   year: 2026
-  journal: "arXiv preprint arXiv:2607.16268"
+  journal: "arXiv preprint"
+  doi: "10.48550/arXiv.2607.16268"
   url: "https://arxiv.org/abs/2607.16268"
+  identifiers:
+    - type: arxiv
+      value: "2607.16268"

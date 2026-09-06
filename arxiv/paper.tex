@@ -68,14 +68,17 @@ schedule.
 We evaluate PsiLogic against Adam, AdamW, and Lion using \textbf{FairBench}---a reproducible
 benchmark protocol with per-optimizer learning-rate sweeps, identical initialization per seed,
 and Welch $t$-tests. On an NVIDIA H100 80GB reference run (4 arenas, 3 seeds, 2000 steps,
-bf16 AMP), PsiLogic achieves the best validation metric in \textbf{three of four arenas}: NLP
-perplexity $7.79 \pm 0.18$ vs.\ $8.17 \pm 0.08$ (AdamW, $p = 0.049$), ViT top-1 accuracy
-$0.244 \pm 0.006$ vs.\ $0.223 \pm 0.002$ (AdamW, $p = 0.015$), and ResNet top-1 accuracy
-$0.222 \pm 0.001$ vs.\ $0.172 \pm 0.004$ (Adam, $p = 0.001$). On diffusion, validation MSE
-is statistically tied with Adam/AdamW ($p = 0.49$). ResNet accuracy vs.\ AdamW is a numerical
-tie without significance at three seeds ($p = 0.44$). Peak GPU memory is comparable across
-optimizers; PsiLogic incurs \textbf{1.2--1.8$\times$} wall-clock overhead on transformer-heavy arenas
-(implementation-bound; Section~\ref{sec:limitations}).
+bf16 AMP), PsiLogic records the best validation metric on \textbf{NLP perplexity} and
+\textbf{ViT accuracy}, \textbf{beats Adam and numerically ties AdamW on ResNet}, and
+\textbf{ties Adam/AdamW on diffusion}. Concretely: NLP perplexity $7.79 \pm 0.18$ vs.\
+$8.17 \pm 0.08$ (AdamW, $p = 0.049$); ViT top-1 $0.244 \pm 0.006$ vs.\ $0.223 \pm 0.002$
+(AdamW, $p = 0.015$); ResNet top-1 $0.222 \pm 0.001$ vs.\ Adam $0.172 \pm 0.004$
+($p = 0.001$) and AdamW $0.219 \pm 0.005$ ($p = 0.44$, n.s.); diffusion MSE
+$0.02009 \pm 0.00045$ vs.\ $0.01987 \pm 0.00006$ ($p = 0.49$, n.s.). Peak GPU memory is
+comparable across optimizers; PsiLogic incurs \textbf{1.2--1.8$\times$} wall-clock overhead
+on the June 2026 H100 run (\textbf{pre-Triton fusion}; Section~\ref{sec:limitations}).
+Package v0.5+ ships an optional fused CUDA backend that does not change optimizer math; a
+fused FairBench re-run is pending.
 
 We release an open-source PyTorch implementation, the full FairBench harness, and all raw
 CSV outputs to support independent verification.
@@ -351,7 +354,8 @@ Appendix~\ref{app:sig}--\ref{app:seeds}.
   \label{fig:curves}
 \end{figure}
 
-PsiLogic reports the best validation metric on NLP, ViT, and ResNet in Table~\ref{tab:main}.
+PsiLogic reports the best NLP perplexity and ViT accuracy in Table~\ref{tab:main},
+beats Adam and numerically ties AdamW on ResNet, and ties Adam/AdamW on diffusion.
 Against Adam, all three gains are statistically significant (Appendix~\ref{app:sig}); against AdamW,
 ViT and NLP perplexity are significant, while ResNet is a numerical edge ($0.222$ vs.\ $0.219$)
 without significance at three seeds ($p=0.44$), and diffusion remains tied.
@@ -391,14 +395,18 @@ ResNet shows the lowest cross-seed standard deviation among optimizers
 \begin{enumerate}[leftmargin=*, itemsep=2pt]
   \item \textbf{Small seed count}---3 seeds; some comparisons (ResNet vs.\ AdamW, diffusion vs.\ AdamW) are not statistically significant.
   \item \textbf{Short training budget}---2000 steps per arena; not ImageNet- or LLM-scale.
-  \item \textbf{Step-time overhead}---up to 1.79$\times$ vs.\ AdamW on ViT.
-    The chaos detector tracks only scalar gradient statistics; the measured wall-clock gap is
-    \emph{implementation-bound}---sequential element-wise PyTorch ops and the lack of fused
-    \texttt{foreach} CUDA kernels in the reference build---not an inherent theoretical cost.
-    Future releases can reduce overhead via kernel fusion (e.g., ATen or Triton).
+  \item \textbf{Step-time overhead}---up to 1.79$\times$ vs.\ AdamW on ViT in the June 2026
+    H100 reference (pre-fusion). The chaos detector tracks only scalar gradient statistics;
+    the measured wall-clock gap is \emph{implementation-bound}. Package \textbf{v0.5+} adds
+    an optional Triton fused CUDA step (\texttt{psilogic[cuda]}, \texttt{use\_fused\_cuda=True})
+    that preserves optimizer math and targets $\leq 1.25\times$ AdamW step time on Ampere+;
+    a fused FairBench H100 re-run is still pending.
   \item \textbf{Diffusion}---no quality win over Adam/AdamW at this budget.
   \item \textbf{No convergence proof}---empirical stability only.
   \item \textbf{Independent evaluation}---results have not yet been replicated by external groups.
+  \item \textbf{Package default drift}---from v0.6 the bare constructor disables AGC / grad
+    centralization; task presets and FairBench arena configs may still enable them. Record the
+    exact preset when comparing to this paper.
 \end{enumerate}
 
 \section{Reproducibility Statement}
@@ -416,10 +424,10 @@ Software DOI: \texttt{10.5281/zenodo.18739857} \quad PyPI: \texttt{pip install p
 \section{Conclusion}
 
 PsiLogic augments Adam with a chaos-gated Active Cancellation term that is strong during
-unstable training and vanishes at convergence. Under FairBench on NVIDIA H100, it achieves
-the best validation metric in three of four cross-domain arenas, with honest reporting of
-ties and overhead. Future work: reduce step-time cost, increase seed count and training
-length, and seek independent replication at scale.
+unstable training and vanishes at convergence. Under FairBench on NVIDIA H100, it wins NLP
+perplexity and ViT accuracy, beats Adam / ties AdamW on ResNet, ties on diffusion, and
+reports wall-time overhead honestly (pre-fusion baseline). Future work: validate fused
+overhead, increase seed count and training length, and seek independent replication at scale.
 
 \bibliographystyle{plain}
 \begin{thebibliography}{99}

@@ -158,6 +158,18 @@ class TestValidation:
         with pytest.raises((AssertionError, ValueError)):
             PsiLogic(model.parameters(), **bad_kwargs)
 
+    def test_sparse_grad_raises(self):
+        """Sparse gradients are unsupported (PyTorch lacks sparse in-place ops)."""
+        p = nn.Parameter(torch.zeros(4, 4))
+        p.grad = torch.sparse_coo_tensor(
+            indices=torch.tensor([[0, 1], [0, 1]]),
+            values=torch.tensor([1.0, 2.0]),
+            size=(4, 4),
+        )
+        opt = PsiLogic([p], lr=1e-3, use_foreach=False)
+        with pytest.raises(NotImplementedError, match="SparseCPU"):
+            opt.step()
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 4. Chaos gating modes
@@ -302,6 +314,39 @@ class TestEdgeCases:
         opt = PsiLogic(simple_model.parameters(), lr=1e-2, agc_clip=0.0)
         init, final = run_steps(simple_model, opt, x, y, criterion)
         assert final < init
+
+    def test_frozen_parameters_not_updated(self):
+        """Frozen layers must not change or accumulate optimizer state."""
+        torch.manual_seed(0)
+        model = nn.Sequential(nn.Linear(4, 8), nn.Linear(8, 2))
+        frozen_snapshot = {n: p.clone() for n, p in model[0].named_parameters()}
+        trainable_before = {n: p.clone() for n, p in model[1].named_parameters()}
+
+        for p in model[0].parameters():
+            p.requires_grad = False
+
+        opt = PsiLogic(model.parameters(), lr=1e-2)
+        x = torch.randn(8, 4)
+        y = torch.randint(0, 2, (8,))
+        crit = nn.CrossEntropyLoss()
+
+        for _ in range(10):
+            opt.zero_grad()
+            crit(model(x), y).backward()
+            opt.step()
+
+        for name, before in frozen_snapshot.items():
+            param = dict(model[0].named_parameters())[name]
+            assert torch.equal(param, before), f"Frozen param '{name}' was updated"
+
+        for name, before in trainable_before.items():
+            param = dict(model[1].named_parameters())[name]
+            assert not torch.equal(param, before), f"Trainable param '{name}' did not change"
+
+        for p in model[0].parameters():
+            assert p not in opt.state or opt.state[p].get("t", 0) == 0, (
+                "Frozen param must not accumulate optimizer step count"
+            )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

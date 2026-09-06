@@ -8,7 +8,13 @@ import torch.nn as nn
 
 from .optimizer import PsiLogic
 from .param_groups import gpt_param_groups, nlp_param_groups, vit_param_groups
-from .presets import gpt_scratch_defaults, nlp_defaults, vision_defaults, whisper_defaults
+from .presets import (
+    apply_preset,
+    gpt_scratch_defaults,
+    nlp_defaults,
+    vision_defaults,
+    whisper_defaults,
+)
 
 _AUTO_LR: dict[str, float] = {
     "vit": 1e-3,
@@ -133,15 +139,7 @@ class PsiLogicNLP(PsiLogic):
         gamma_T_max: int = 0,
         **kwargs: Any,
     ) -> None:
-        kwargs.setdefault("gamma", 0.03)
-        kwargs.setdefault("chaos_tau", 0.40)
-        kwargs.setdefault("chaos_warmup", -1)
-        kwargs.setdefault("quantum_decay", 2e-4)
-        kwargs.setdefault("agc_clip", 0.01)
-        kwargs.setdefault("grad_centralize", True)
-        kwargs.setdefault("adaptive_tau", True)
-        kwargs.setdefault("tau_scale", 2.0)
-        kwargs.setdefault("max_cancel", 0.05)
+        apply_preset(kwargs, nlp_defaults(gamma_T_max))
         if isinstance(params, nn.Module):
             params = nlp_param_groups(params, lr=lr, weight_decay=kwargs.get("weight_decay", 1e-4))
         super().__init__(params, lr=lr, gamma_T_max=gamma_T_max, **kwargs)
@@ -156,7 +154,8 @@ class PsiLogicGPT(PsiLogic):
 
     Uses the bare GPT-scratch knobs (no AGC / no grad centralize), matching
     ``PsiLogic(params, lr=...)`` extras. Pass ``agc_clip=...`` /
-    ``grad_centralize=True`` to opt back in.
+    ``grad_centralize=True`` to opt back in. Knobs come from
+    ``gpt_scratch_defaults``.
     """
 
     def __init__(
@@ -166,16 +165,7 @@ class PsiLogicGPT(PsiLogic):
         gamma_T_max: int = 0,
         **kwargs: Any,
     ) -> None:
-        kwargs.setdefault("gamma", 0.02)
-        kwargs.setdefault("chaos_tau", 0.40)
-        kwargs.setdefault("chaos_warmup", -1)
-        kwargs.setdefault("quantum_decay", 0.0)
-        kwargs.setdefault("weight_decay", 0.1)
-        kwargs.setdefault("agc_clip", 0.0)
-        kwargs.setdefault("grad_centralize", False)
-        kwargs.setdefault("adaptive_tau", True)
-        kwargs.setdefault("tau_scale", 3.0)
-        kwargs.setdefault("max_cancel", 0.03)
+        apply_preset(kwargs, gpt_scratch_defaults(gamma_T_max))
         if isinstance(params, nn.Module):
             params = gpt_param_groups(params, lr=lr, weight_decay=kwargs["weight_decay"])
         super().__init__(params, lr=lr, gamma_T_max=gamma_T_max, **kwargs)
@@ -188,7 +178,7 @@ class PsiLogicViT(PsiLogic):
     latter case ``vit_param_groups`` is applied automatically (patch embed
     γ=0.005, attention γ=0.02, MLP γ=0.03, norm/bias without weight decay).
     ``lion_blocks=True`` runs Lion updates on transformer blocks while patch
-    embeddings keep Adam.
+    embeddings keep Adam. Knobs come from ``vision_defaults``.
     """
 
     def __init__(
@@ -199,15 +189,7 @@ class PsiLogicViT(PsiLogic):
         lion_blocks: bool = False,
         **kwargs: Any,
     ) -> None:
-        kwargs.setdefault("gamma", 0.04)
-        kwargs.setdefault("chaos_tau", 0.40)
-        kwargs.setdefault("chaos_warmup", -1)
-        kwargs.setdefault("quantum_decay", 0.0)
-        kwargs.setdefault("agc_clip", 0.02)
-        kwargs.setdefault("grad_centralize", True)
-        kwargs.setdefault("adaptive_tau", True)
-        kwargs.setdefault("tau_scale", 2.5)
-        kwargs.setdefault("max_cancel", 0.04)
+        apply_preset(kwargs, vision_defaults(gamma_T_max))
         if isinstance(params, nn.Module):
             params = vit_param_groups(
                 params,
@@ -223,7 +205,8 @@ class PsiLogicWhisper(PsiLogic):
 
     Accepts either a parameter iterable or a full ``nn.Module`` — in the
     latter case ``nlp_param_groups`` is applied (encoder-decoder speech models
-    share the transformer naming conventions it targets).
+    share the transformer naming conventions it targets). Knobs come from
+    ``whisper_defaults``.
     """
 
     def __init__(
@@ -233,11 +216,7 @@ class PsiLogicWhisper(PsiLogic):
         gamma_T_max: int = 0,
         **kwargs: Any,
     ) -> None:
-        preset = whisper_defaults(gamma_T_max)
-        preset.pop("gamma_T_max", None)
-        preset.pop("use_foreach", None)
-        for key, value in preset.items():
-            kwargs.setdefault(key, value)
+        apply_preset(kwargs, whisper_defaults(gamma_T_max))
         if isinstance(params, nn.Module):
             params = nlp_param_groups(params, lr=lr, weight_decay=kwargs.get("weight_decay", 1e-2))
         super().__init__(params, lr=lr, gamma_T_max=gamma_T_max, **kwargs)

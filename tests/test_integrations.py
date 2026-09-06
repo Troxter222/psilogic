@@ -40,7 +40,7 @@ class TestCreatePsiLogicOptimizer:
     def test_auto_preset_detects_gpt(self):
         opt = create_psilogic_optimizer(ToyGPT(), None)
         assert any(g["gamma"] == 0.005 for g in opt.param_groups)
-        assert opt.defaults["tau_scale"] == 3.0  # gpt_scratch_defaults
+        assert opt.defaults["tau_scale"] == 2.0  # gpt_scratch_defaults
 
     def test_auto_preset_detects_vit(self):
         opt = create_psilogic_optimizer(ToyViT(), None)
