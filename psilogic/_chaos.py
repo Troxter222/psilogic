@@ -18,6 +18,19 @@ _AUTO_WARMUP_FALLBACK = 200  # used when the training horizon is unknown
 _AUTO_GAMMA_THRESHOLD = 0.1
 _AUTO_GAMMA_FLOOR = 0.1
 
+# Soft-gate policy: the fast/slow ratio becomes a continuous ``excess`` in
+# ``(0, 1)`` instead of a hard ``fast > tau_scale * slow`` mask. ``tau_scale``
+# keeps its meaning — "how far above 1.0 the ratio must climb before the gate
+# is wide open" — because the sigmoid saturates (~0.98) at ``ratio ==
+# tau_scale``. The hard mask left the gate shut for entire runs, which made
+# gamma / max_cancel / p_ext bit-for-bit inert.
+_EXCESS_SHARPNESS = 4.0
+_MIN_TAU_MARGIN = 0.25
+
+# Never let trust reach zero: ``max_cancel == 1.0`` is a legal setting and a
+# zero trust would divide the Adam denominator by zero.
+_MAX_DAMPING = 0.99
+
 
 def resolve_warmup(warmup_cfg: int, total_steps: int) -> int:
     """Return the effective number of chaos warmup steps.
@@ -73,11 +86,19 @@ def auto_gamma(
 def get_chaos_metrics(state: dict[str, Any]) -> dict[str, float]:
     """Export human-readable chaos metrics from a per-parameter state dict.
 
-    Returns ``step``, ``fast``, ``slow``, ``ratio`` (fast/slow) and
-    ``gn_avg``. Safe to call on an empty (uninitialized) state.
+    Returns ``step``, ``fast``, ``slow``, ``ratio`` (fast/slow), ``gn_avg``
+    and ``soft_chaos`` (the continuous level that actually drove the last
+    update). Safe to call on an empty (uninitialized) state.
     """
     if not state or "fast" not in state:
-        return {"step": 0.0, "fast": 0.0, "slow": 0.0, "ratio": 0.0, "gn_avg": 0.0}
+        return {
+            "step": 0.0,
+            "fast": 0.0,
+            "slow": 0.0,
+            "ratio": 0.0,
+            "gn_avg": 0.0,
+            "soft_chaos": 0.0,
+        }
     fast = float(state["fast"])
     slow = float(state["slow"])
     return {
@@ -86,6 +107,7 @@ def get_chaos_metrics(state: dict[str, Any]) -> dict[str, float]:
         "slow": slow,
         "ratio": fast / (slow + 1e-12),
         "gn_avg": float(state["gn_avg"]) if "gn_avg" in state else 0.0,
+        "soft_chaos": float(state["soft_chaos"]) if "soft_chaos" in state else 0.0,
     }
 
 
@@ -102,35 +124,87 @@ def effective_gamma_and_qd(
     return gamma, quantum_decay
 
 
-def chaos_contribution(
+def grad_momentum_disagreement(
+    grad: torch.Tensor,
+    momentum: torch.Tensor,
+    grad_norm: torch.Tensor,
+    *,
+    step: int,
+    eps: float,
+) -> torch.Tensor:
+    """Return ``0.5 * (1 - cos(grad, momentum))`` as a 1-element fp32 tensor.
+
+    ``0`` means the fresh gradient points the same way as accumulated
+    momentum (the optimizer is making consistent progress) and ``1`` means it
+    fully opposes it (the step is oscillating across a valley). ``momentum``
+    must still hold the *pre-update* value, and ``grad_norm`` the norm of the
+    same post-AGC/post-centralize gradient that feeds the chaos EMAs.
+
+    Returns ``0`` on the first step, where momentum is still all zeros and
+    the cosine carries no information.
+    """
+    if step <= 1:
+        return torch.zeros(1, device=momentum.device, dtype=torch.float32)
+    dot = (momentum * grad).sum()
+    denom = momentum.norm() * grad_norm.to(torch.float32) + eps
+    cos = torch.clamp(dot / denom, min=-1.0, max=1.0)
+    return (0.5 * (1.0 - cos)).reshape(1).to(torch.float32)
+
+
+def soft_chaos_signal(
     slow_t: torch.Tensor,
     fast_t: torch.Tensor,
+    disagree: torch.Tensor,
     *,
     adaptive_tau: bool,
     chaos_tau: float,
     tau_scale: float,
     eps: float,
-    lr: float,
-    gamma_eff: float,
-    p_ext: float,
-    max_cancel: float,
-    param_dtype: torch.dtype,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """
-    Compute spike mask and clamped active-cancellation coefficient.
+) -> torch.Tensor:
+    """Continuous chaos level in ``[0, 1]``.
 
-    Returns ``(chaos_contrib, spike_mask)`` where ``spike_mask`` is 0/1 in
-    ``param_dtype`` and ``chaos_contrib`` is the per-step shrinkage fraction.
+    Two independent symptoms of "the model is confused" are averaged:
+
+    * ``excess`` — the fast EMA of the gradient norm running hot relative to
+      the slow baseline, squashed through a sigmoid whose sharpness is set by
+      ``tau_scale`` (or by ``chaos_tau`` when ``adaptive_tau=False``).
+    * ``disagree`` — the gradient fighting its own momentum, from
+      :func:`grad_momentum_disagreement`.
+
+    ``tanh(slow)`` scales the whole thing, so the signal vanishes on its own
+    once gradients go quiet at convergence.
+
+    Every operation is elementwise, so this serves the per-parameter path
+    (1-element tensors) and the batched path (stacked ``(n,)`` vectors)
+    identically.
     """
     if adaptive_tau:
-        spike_mask = (fast_t > tau_scale * slow_t + eps).to(param_dtype)
+        sharpness = _EXCESS_SHARPNESS / max(tau_scale - 1.0, _MIN_TAU_MARGIN)
+        excess = torch.sigmoid((fast_t / (slow_t + eps) - 1.0) * sharpness)
     else:
-        spike_mask = (slow_t >= chaos_tau).to(param_dtype)
+        excess = torch.sigmoid((slow_t / max(chaos_tau, eps) - 1.0) * _EXCESS_SHARPNESS)
+    return torch.tanh(slow_t) * (0.5 * excess + 0.5 * disagree)
 
-    ratio = fast_t / (slow_t + eps)
-    chaos = torch.tanh(slow_t) * (1.0 + 0.5 * torch.tanh(torch.clamp(ratio - 1.0, min=0.0)))
-    raw_cc = chaos * lr * gamma_eff * p_ext
-    return torch.clamp(raw_cc, max=max_cancel) * spike_mask, spike_mask
+
+def trust_from_soft_chaos(
+    soft_chaos: torch.Tensor,
+    *,
+    gamma_eff: torch.Tensor | float,
+    p_ext: float,
+    chaos_gain: float,
+    max_cancel: float,
+) -> torch.Tensor:
+    """Return the ``trust`` factor the Adam/Lion update is scaled by.
+
+    ``trust = 1 - min(soft_chaos * gamma * p_ext * warmup_gain, max_cancel)``,
+    so ``gamma`` reads as "the largest fraction of a step we are willing to
+    withhold when the model is maximally confused". ``gamma_eff`` may be a
+    Python float (group-uniform) or a per-parameter ``(n,)`` tensor from
+    :func:`auto_gamma_batched`.
+    """
+    cap = min(max_cancel, _MAX_DAMPING)
+    damping = torch.clamp(soft_chaos * gamma_eff * p_ext * chaos_gain, max=cap)
+    return 1.0 - damping
 
 
 def update_gradient_norm_ema_batched(
@@ -184,39 +258,6 @@ def auto_gamma_batched(
     return torch.where(
         slow_vec >= _AUTO_GAMMA_THRESHOLD, torch.full_like(slow_vec, gamma_base), scaled
     )
-
-
-def chaos_contribution_batched(
-    slow_vec: torch.Tensor,
-    fast_vec: torch.Tensor,
-    *,
-    adaptive_tau: bool,
-    chaos_tau: float,
-    tau_scale: float,
-    eps: float,
-    lr: float,
-    gamma_eff: torch.Tensor | float,
-    p_ext: float,
-    max_cancel: float,
-    param_dtype: torch.dtype,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Vectorized :func:`chaos_contribution` across an entire parameter group.
-
-    Same formula as the scalar version, applied elementwise over the
-    parameter axis. ``gamma_eff`` may be a Python float (group-uniform,
-    ``gamma_auto=False``) or a per-parameter ``(n,)`` tensor from
-    :func:`auto_gamma_batched` — both broadcast correctly against the
-    ``(n,)`` chaos vectors.
-    """
-    if adaptive_tau:
-        spike_mask = (fast_vec > tau_scale * slow_vec + eps).to(param_dtype)
-    else:
-        spike_mask = (slow_vec >= chaos_tau).to(param_dtype)
-
-    ratio = fast_vec / (slow_vec + eps)
-    chaos = torch.tanh(slow_vec) * (1.0 + 0.5 * torch.tanh(torch.clamp(ratio - 1.0, min=0.0)))
-    raw_cc = chaos * lr * gamma_eff * p_ext
-    return torch.clamp(raw_cc, max=max_cancel) * spike_mask, spike_mask
 
 
 def update_gradient_norm_ema(

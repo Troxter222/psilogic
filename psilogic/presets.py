@@ -1,8 +1,45 @@
-"""Recommended hyperparameter presets for common training tasks."""
+"""Recommended hyperparameter presets for common training tasks.
+
+This module is the **source of truth** for task knobs. Convenience classes
+(``PsiLogicNLP`` / ``GPT`` / ``ViT`` / ``Whisper``) and FairBench arenas should
+apply these dicts rather than duplicating literals.
+"""
 
 from __future__ import annotations
 
 from typing import Any
+
+# Keys FairBench holds fixed per arena (LR is swept separately).
+_FAIRBENCH_KEYS: tuple[str, ...] = (
+    "gamma",
+    "chaos_tau",
+    "chaos_warmup",
+    "adaptive_tau",
+    "tau_scale",
+    "max_cancel",
+    "agc_clip",
+    "grad_centralize",
+    "quantum_decay",
+)
+
+
+def apply_preset(
+    kwargs: dict[str, Any],
+    preset: dict[str, Any],
+    *,
+    drop: tuple[str, ...] = ("gamma_T_max", "use_foreach"),
+) -> dict[str, Any]:
+    """``setdefault`` every preset key onto ``kwargs``, skipping ``drop``."""
+    for key, value in preset.items():
+        if key in drop:
+            continue
+        kwargs.setdefault(key, value)
+    return kwargs
+
+
+def as_fairbench_kwargs(preset: dict[str, Any]) -> dict[str, Any]:
+    """Subset of a preset suitable for ``Arena.psilogic_kwargs()``."""
+    return {key: preset[key] for key in _FAIRBENCH_KEYS if key in preset}
 
 
 def _base_defaults(
@@ -75,13 +112,15 @@ def gpt_scratch_defaults(total_steps: int = 0) -> dict[str, Any]:
 
     Matches the plain drop-in (no AGC / no grad centralize); FairBench
     NLP follow-ups showed those extras hurt TinyStories GPT-scratch vs AdamW.
+    ``tau_scale=2.0`` matches the constructor default so the soft chaos gate
+    can open (``3.0`` left the continuous excess near zero for entire runs).
     ``chaos_warmup=-1`` auto-scales the warmup to ``max(500, steps // 20)``.
     Pass the real ``total_steps`` for warmup auto-scale and cosine γ decay.
     """
     return _base_defaults(
         gamma=0.02,
         quantum_decay=0.0,
-        tau_scale=3.0,
+        tau_scale=2.0,
         max_cancel=0.03,
         agc_clip=0.0,
         grad_centralize=False,

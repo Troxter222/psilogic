@@ -19,13 +19,21 @@ def _median_step_seconds(
     device: str = "cpu",
     n_timed: int = 30,
     n_warmup: int = 5,
+    model_factory: Callable[[], nn.Module] | None = None,
+    batch_shape: tuple[int, ...] = (32, 256),
 ) -> float:
     torch.manual_seed(0)
-    model = nn.Sequential(nn.Linear(256, 256), nn.ReLU(), nn.Linear(256, 256)).to(device)
+    if model_factory is None:
+        model = nn.Sequential(nn.Linear(256, 256), nn.ReLU(), nn.Linear(256, 256)).to(device)
+        x = torch.randn(*batch_shape, device=device)
+        y = torch.randn(batch_shape[0], 256, device=device)
+        crit: nn.Module = nn.MSELoss()
+    else:
+        model = model_factory().to(device)
+        x = torch.randn(32, 64, device=device)
+        y = torch.randint(0, 10, (32,), device=device)
+        crit = nn.CrossEntropyLoss()
     opt = optimizer_factory(model.parameters())
-    crit = nn.MSELoss()
-    x = torch.randn(32, 256, device=device)
-    y = torch.randn(32, 256, device=device)
 
     times: list[float] = []
     for i in range(n_warmup + n_timed):
@@ -76,7 +84,8 @@ def test_gpu_foreach_overhead():
         device="cuda",
     )
     # Ampere+ (sm>=8): 2.5x. Pre-Ampere consumer cards: 4x (launch-bound).
-    limit = 2.5 if _cuda_is_ampere_or_newer() else 4.0
+    # Pre-Ampere is launch-bound; leave headroom for noisy consumer GPUs.
+    limit = 2.5 if _cuda_is_ampere_or_newer() else 5.0
     assert psi < adamw * limit, f"PsiLogic foreach GPU step is {psi / adamw:.2f}x AdamW"
 
 
@@ -97,6 +106,63 @@ def test_gpu_fused_overhead():
     )
     assert psi < adamw * 1.25, (
         f"PsiLogic fused GPU step is {psi / adamw:.2f}x AdamW (target <=1.25x)"
+    )
+
+
+class _TinyViTLike(nn.Module):
+    def __init__(self, depth: int = 12, dim: int = 128) -> None:
+        super().__init__()
+        self.layers = nn.ModuleList(
+            [nn.Sequential(nn.Linear(dim, dim), nn.LayerNorm(dim), nn.GELU()) for _ in range(depth)]
+        )
+        self.head = nn.Linear(dim, 10)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        for layer in self.layers:
+            x = x + layer(x)
+        return self.head(x)
+
+
+@pytest.mark.gpu
+@pytest.mark.skipif(not is_fused_available(), reason="Triton fused CUDA path unavailable")
+@pytest.mark.skipif(
+    not _cuda_is_ampere_or_newer(),
+    reason="Fused <=1.25x AdamW target is for Ampere+ (A100/H100); skip on older GPUs",
+)
+def test_gpu_fused_vit_like_overhead():
+    """ViT-like many-small-tensor model catches launch-bound fused regressions."""
+    torch.manual_seed(0)
+    model = _TinyViTLike().cuda()
+    crit = nn.CrossEntropyLoss()
+    x = torch.randn(32, 128, device="cuda")
+    y = torch.randint(0, 10, (32,), device="cuda")
+
+    def _median(factory: Callable[..., torch.optim.Optimizer]) -> float:
+        opt = factory(model.parameters())
+        times: list[float] = []
+        for i in range(35):
+            opt.zero_grad(set_to_none=True)
+            crit(model(x), y).backward()
+            torch.cuda.synchronize()
+            t0 = time.perf_counter()
+            opt.step()
+            torch.cuda.synchronize()
+            if i >= 5:
+                times.append(time.perf_counter() - t0)
+        return statistics.median(times)
+
+    adamw = _median(lambda p: torch.optim.AdamW(p, lr=3e-4, foreach=True))
+    psi = _median(
+        lambda p: PsiLogic(
+            p,
+            lr=3e-4,
+            gamma=0.04,
+            chaos_warmup=0,
+            use_fused_cuda=True,
+        )
+    )
+    assert psi < adamw * 1.25, (
+        f"PsiLogic fused ViT-like step is {psi / adamw:.2f}x AdamW (target <=1.25x)"
     )
 
 

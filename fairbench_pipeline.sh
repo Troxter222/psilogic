@@ -8,13 +8,16 @@
 # Re-running this script (e.g. after a PC crash/reboot) skips stages that
 # already finished and continues from where it left off.
 
+# Use -u/-o pipefail, but NOT -e: the train stage captures exit codes and
+# retries on failure. With errexit, a crashed fairbench run would abort the
+# script before the retry loop can handle exit_code.
 set -uo pipefail
 
 # Path to the directory that CONTAINS the `fairbench` package (i.e. the dir
-# where `python -m fairbench...` actually finds the module). Adjust
-# BENCHMARK_DIR if your layout differs -- it must be the parent of the
-# `fairbench/` package folder, not the fairbench folder itself.
-BENCHMARK_DIR="${BENCHMARK_DIR:-/mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/benchmark}"
+# where `python -m fairbench...` actually finds the module). Defaults to
+# <repo>/benchmark next to this script. Override with BENCHMARK_DIR if needed.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BENCHMARK_DIR="${BENCHMARK_DIR:-${SCRIPT_DIR}/benchmark}"
 
 if [[ ! -d "${BENCHMARK_DIR}/fairbench" ]]; then
     echo "Error: '${BENCHMARK_DIR}/fairbench' not found." >&2
@@ -24,6 +27,8 @@ if [[ ! -d "${BENCHMARK_DIR}/fairbench" ]]; then
 fi
 cd "${BENCHMARK_DIR}" || exit 1
 
+# NOTE: defaults below are a longer *local* recipe (5 seeds, 5000 steps, fp16).
+# The paper / committed reference is results/full/ (3 seeds, 2000 steps, bf16).
 DATA_ROOT="${DATA_ROOT:-./data}"
 OUTPUT_DIR="${OUTPUT_DIR:-./results/local_full}"
 CONFIG_JSON="${CONFIG_JSON:-}"
@@ -85,8 +90,12 @@ else
         fi
         echo "[stage: train] attempt ${attempt}/${MAX_TRAIN_RETRIES}: ${cmd[*]}"
 
-        "${cmd[@]}"
-        exit_code=$?
+        # Capture exit status without errexit so the retry loop can continue.
+        if "${cmd[@]}"; then
+            exit_code=0
+        else
+            exit_code=$?
+        fi
         if [[ $exit_code -eq 0 ]]; then
             mark_done train
             echo "[stage: train] done."

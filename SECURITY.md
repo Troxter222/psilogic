@@ -2,12 +2,15 @@
 
 ## Supported Versions
 
-Security fixes are provided for the latest release on PyPI and the `main` branch.
+Security fixes are provided for the **latest release on PyPI** and the `main` branch.
 
 | Version | Supported |
 |---------|-----------|
-| 0.4.x   | Yes       |
-| < 0.4   | No        |
+| 0.6.x (latest) | Yes |
+| 0.5.x | Best-effort until superseded |
+| < 0.5 | No |
+
+Always upgrade to the newest patch on PyPI when a security fix ships.
 
 ## Reporting a Vulnerability
 
