@@ -108,7 +108,9 @@ def _cached_sqrt_numels(
             device=device,
             dtype=torch.float32,
         )
-    return cache["sqrt_numels"]
+    sqrt_numels = cache["sqrt_numels"]
+    assert isinstance(sqrt_numels, torch.Tensor)
+    return sqrt_numels
 
 
 def _ensure_multitensor_tables(
@@ -134,7 +136,8 @@ def _ensure_multitensor_tables(
         return None
 
     device = params[0].device
-    mt = cache.get("mt")
+    mt_obj = cache.get("mt")
+    mt: dict[str, Any] | None = mt_obj if isinstance(mt_obj, dict) else None
     p_sig = tuple(p.data_ptr() for p in params)
     m_sig = tuple(s["m"].data_ptr() for s in states)
     v_sig = tuple(s["v"].data_ptr() for s in states)
@@ -173,6 +176,8 @@ def _ensure_multitensor_tables(
         }
         cache["mt"] = mt
         cache["mt_numels"] = numels_list
+
+    assert mt is not None
 
     if need_pmv:
         mt["p_ptrs"] = torch.tensor(list(p_sig), device=device, dtype=torch.int64)
@@ -293,9 +298,7 @@ def fused_param_step(
     chaos_gain = effective_warmup(step, gamma_t_max, warmup_cfg)
     disagree = None
     if chaos_gain > 0.0 and gamma_sched > 0:
-        disagree = grad_momentum_disagreement(
-            grad, state["m"], g_norm, step=step, eps=eps
-        )
+        disagree = grad_momentum_disagreement(grad, state["m"], g_norm, step=step, eps=eps)
 
     update_gradient_norm_ema(
         g_norm,
@@ -468,9 +471,7 @@ def fused_group_step(
     disagrees: list[torch.Tensor] = []
     if chaos_gain > 0.0 and gamma_eff > 0:
         disagrees = [
-            grad_momentum_disagreement(
-                grad, state["m"], g_norms[i], step=state["t"], eps=eps
-            )
+            grad_momentum_disagreement(grad, state["m"], g_norms[i], step=state["t"], eps=eps)
             for i, (state, grad) in enumerate(zip(states, grads))
         ]
 
@@ -501,7 +502,11 @@ def fused_group_step(
     n_states = len(states)
     wd_decay = lr * wd if wd > 0 else 0.0
 
-    if chaos_gain > 0.0 and (isinstance(gamma_eff_vec, torch.Tensor) or gamma_eff_vec > 0) and disagrees:
+    if (
+        chaos_gain > 0.0
+        and (isinstance(gamma_eff_vec, torch.Tensor) or gamma_eff_vec > 0)
+        and disagrees
+    ):
         soft_vec = soft_chaos_signal(
             slow_vec,
             fast_vec,
@@ -512,18 +517,20 @@ def fused_group_step(
             eps=eps,
         )
         _write_soft_chaos(states, soft_vec)
-        trust_vec = trust_from_soft_chaos(
-            soft_vec,
-            gamma_eff=gamma_eff_vec,
-            p_ext=p_ext,
-            chaos_gain=chaos_gain,
-            max_cancel=max_cancel,
-        ).to(torch.float32).contiguous()
+        trust_vec = (
+            trust_from_soft_chaos(
+                soft_vec,
+                gamma_eff=gamma_eff_vec,
+                p_ext=p_ext,
+                chaos_gain=chaos_gain,
+                max_cancel=max_cancel,
+            )
+            .to(torch.float32)
+            .contiguous()
+        )
 
         if qd_eff > 0:
-            qd_contrib_vec = (
-                (qd_eff * chaos_gain * (1.0 - soft_vec)).to(torch.float32).contiguous()
-            )
+            qd_contrib_vec = (qd_eff * chaos_gain * (1.0 - soft_vec)).to(torch.float32).contiguous()
             apply_quantum = True
         else:
             qd_contrib_vec = torch.zeros(n_states, device=dev, dtype=torch.float32)

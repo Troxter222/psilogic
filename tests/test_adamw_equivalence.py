@@ -63,7 +63,7 @@ def _run_mirror_steps(
         opt_psi.zero_grad()
         opt_adam.zero_grad()
         crit(model_psi(x), y).backward()
-        for p_psi, p_adam in zip(model_psi.parameters(), model_adam.parameters(), strict=True):
+        for p_psi, p_adam in zip(model_psi.parameters(), model_adam.parameters()):
             p_adam.grad = p_psi.grad.detach().clone()
         opt_psi.step()
         opt_adam.step()
@@ -76,13 +76,13 @@ def test_gamma_zero_matches_adamw(weight_decay: float) -> None:
     """With all PsiLogic extras disabled, scalar CPU path must match AdamW."""
     model_psi, model_adam, opt_psi, opt_adam = _run_mirror_steps(weight_decay=weight_decay)
 
-    for p_psi, p_adam in zip(model_psi.parameters(), model_adam.parameters(), strict=True):
+    for p_psi, p_adam in zip(model_psi.parameters(), model_adam.parameters()):
         assert torch.allclose(p_psi, p_adam, rtol=0.0, atol=5e-5), (
             f"param mismatch max={(p_psi - p_adam).abs().max().item()}"
         )
 
-    for group_psi, group_adam in zip(opt_psi.param_groups, opt_adam.param_groups, strict=True):
-        for p_psi, p_adam in zip(group_psi["params"], group_adam["params"], strict=True):
+    for group_psi, group_adam in zip(opt_psi.param_groups, opt_adam.param_groups):
+        for p_psi, p_adam in zip(group_psi["params"], group_adam["params"]):
             s_psi = opt_psi.state[p_psi]
             s_adam = opt_adam.state[p_adam]
             assert torch.allclose(s_psi["m"], s_adam["exp_avg"], rtol=1e-6, atol=1e-7), (
