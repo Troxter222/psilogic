@@ -31,6 +31,12 @@ from ..logging_utils import LOGGER
 from ..models import DDPM, UNet
 from .base import Arena
 
+try:
+    from psilogic.presets import as_fairbench_kwargs, nlp_defaults
+except ImportError:  # pragma: no cover
+    as_fairbench_kwargs = None  # type: ignore[assignment]
+    nlp_defaults = None  # type: ignore[assignment]
+
 
 class _SyntheticFaces(Dataset):
     """Smooth low-frequency synthetic 'faces' so DDPM training is meaningful."""
@@ -284,11 +290,20 @@ class DiffusionArena(Arena):
             return None
 
     def psilogic_kwargs(self) -> dict[str, Any]:
+        # Start from NLP-like cancellation; FairBench diffusion uses slightly
+        # stronger AGC / max_cancel than the encoder fine-tune preset.
+        if as_fairbench_kwargs is not None and nlp_defaults is not None:
+            kwargs = as_fairbench_kwargs(nlp_defaults())
+            kwargs.update(agc_clip=0.02, max_cancel=0.04)
+            return kwargs
         return dict(
             gamma=0.03,
             chaos_tau=0.40,
+            chaos_warmup=-1,
             adaptive_tau=True,
             tau_scale=2.0,
             max_cancel=0.04,
             agc_clip=0.02,
+            grad_centralize=True,
+            quantum_decay=2e-4,
         )

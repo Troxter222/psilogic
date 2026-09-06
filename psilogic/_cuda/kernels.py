@@ -12,6 +12,8 @@ try:
 except ImportError:
     _HAS_TRITON = False
 
+_MAX_INT32 = 2**31 - 1
+
 
 def _require_triton() -> None:
     if not _HAS_TRITON:
@@ -107,8 +109,8 @@ if _HAS_TRITON:
         lr,
         eps,
         step_size,
-        total_scalar_decay_ptr,  # was: total_scalar_decay (float) — now a 1-elem fp32 pointer
-        wd_only_decay_ptr,  # was: wd_only_decay (float)      — now a 1-elem fp32 pointer
+        wd_decay,  # lr * weight_decay, uniform across the group
+        trust_ptr,  # 1-elem fp32 pointer: chaos trust factor for this tensor
         qd_contrib_ptr,  # was: qd_contrib (float)         — now a 1-elem fp32 pointer
         apply_quantum,
         lion,
@@ -133,6 +135,7 @@ if _HAS_TRITON:
         lr = lr.to(tl.float32)
         eps = eps.to(tl.float32)
         step_size = step_size.to(tl.float32)
+        wd_decay = wd_decay.to(tl.float32)
         beta1 = beta1.to(tl.float32)
         one_minus_beta1 = one_minus_beta1.to(tl.float32)
         beta2 = beta2.to(tl.float32)
@@ -141,16 +144,13 @@ if _HAS_TRITON:
         p = tl.load(p_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
         m = tl.load(m_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
 
-        # Scalars now live on-device; read them here instead of baking them
-        # in as Python-float kernel arguments computed via a blocking `.item()`
-        # on the host. Same values, same math — just no CPU/GPU sync to get them.
-        total_scalar_decay = tl.load(total_scalar_decay_ptr).to(tl.float32)
-        wd_only_decay = tl.load(wd_only_decay_ptr).to(tl.float32)
+        # Chaos-derived scalars live on-device; reading them here instead of
+        # baking them in as Python-float kernel arguments avoids the blocking
+        # `.item()` that computing them on the host would need.
+        trust = tl.load(trust_ptr).to(tl.float32)
 
-        if total_scalar_decay > 0.0:
-            p = p * (1.0 - total_scalar_decay)
-        elif wd_only_decay > 0.0:
-            p = p * (1.0 - wd_only_decay)
+        if wd_decay > 0.0:
+            p = p * (1.0 - wd_decay)
 
         if apply_quantum:
             raw_g = tl.load(raw_g_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
@@ -163,11 +163,11 @@ if _HAS_TRITON:
             g = tl.load(g_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
             update = beta1 * m + one_minus_beta1 * g
             sign = tl.where(update > 0, 1.0, tl.where(update < 0, -1.0, 0.0))
-            p = p - lr * sign
+            p = p - lr * (sign * trust)
             m = beta2 * m + one_minus_beta2 * g
         else:
             v = tl.load(v_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
-            denom = tl.sqrt(v) + eps
+            denom = (tl.sqrt(v) + eps) / trust
             p = p + (-step_size) * (m / denom)
 
         tl.store(p_ptr + offsets, p, mask=mask)
@@ -191,8 +191,8 @@ if _HAS_TRITON:
         lr,
         eps,
         step_size,
-        total_scalar_decay_ptr,
-        wd_only_decay_ptr,
+        wd_decay,
+        trust_ptr,
         qd_contrib_ptr,
         grad_centralize,
         update_variance,
@@ -244,6 +244,7 @@ if _HAS_TRITON:
         lr = lr.to(tl.float32)
         eps = eps.to(tl.float32)
         step_size = step_size.to(tl.float32)
+        wd_decay = wd_decay.to(tl.float32)
 
         g = tl.load(grad_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
         raw_g = tl.load(raw_grad_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
@@ -264,12 +265,9 @@ if _HAS_TRITON:
         else:
             new_v = tl.zeros_like(p)  # unused on the lion branch below
 
-        total_scalar_decay = tl.load(total_scalar_decay_ptr).to(tl.float32)
-        wd_only_decay = tl.load(wd_only_decay_ptr).to(tl.float32)
-        if total_scalar_decay > 0.0:
-            p = p * (1.0 - total_scalar_decay)
-        elif wd_only_decay > 0.0:
-            p = p * (1.0 - wd_only_decay)
+        trust = tl.load(trust_ptr).to(tl.float32)
+        if wd_decay > 0.0:
+            p = p * (1.0 - wd_decay)
 
         if apply_quantum:
             qd_contrib = tl.load(qd_contrib_ptr).to(tl.float32)
@@ -277,13 +275,99 @@ if _HAS_TRITON:
 
         if lion:
             sign = tl.where(computed_m > 0, 1.0, tl.where(computed_m < 0, -1.0, 0.0))
-            p = p - lr * sign
+            p = p - lr * (sign * trust)
             new_m = beta2 * m_old + one_minus_beta2 * g
             tl.store(m_ptr + offsets, new_m, mask=mask)
         else:
             if update_momentum:
                 tl.store(m_ptr + offsets, computed_m, mask=mask)
-            denom = tl.sqrt(new_v) + eps
+            denom = (tl.sqrt(new_v) + eps) / trust
+            p = p + (-step_size) * (computed_m / denom)
+
+        tl.store(p_ptr + offsets, p, mask=mask)
+
+    @triton.jit
+    def _multi_fused_step_kernel(
+        grad_ptrs,
+        raw_grad_ptrs,
+        p_ptrs,
+        m_ptrs,
+        v_ptrs,
+        numels_ptr,
+        tensor_id_ptr,
+        block_off_ptr,
+        wd_decay,
+        trust_ptr,
+        qd_contrib_ptr,
+        apply_quantum,
+        lion,
+        beta1,
+        beta2,
+        one_minus_beta1,
+        one_minus_beta2,
+        lr,
+        eps,
+        step_size,
+        update_variance,
+        update_momentum,
+        PARAM_DTYPE: tl.constexpr,
+        BLOCK: tl.constexpr,
+    ):
+        """Multi-tensor variant of :func:`_fused_step_kernel` — one launch per group."""
+        pid = tl.program_id(0)
+        tid = tl.load(tensor_id_ptr + pid).to(tl.int32)
+        block_off = tl.load(block_off_ptr + pid).to(tl.int32)
+
+        grad_ptr = tl.load(grad_ptrs + tid).to(tl.pointer_type(PARAM_DTYPE))
+        raw_grad_ptr = tl.load(raw_grad_ptrs + tid).to(tl.pointer_type(PARAM_DTYPE))
+        p_ptr = tl.load(p_ptrs + tid).to(tl.pointer_type(PARAM_DTYPE))
+        m_ptr = tl.load(m_ptrs + tid).to(tl.pointer_type(tl.float32))
+        v_ptr = tl.load(v_ptrs + tid).to(tl.pointer_type(tl.float32))
+
+        n_elements = tl.load(numels_ptr + tid).to(tl.int32)
+        offsets = block_off * BLOCK + tl.arange(0, BLOCK)
+        mask = offsets < n_elements
+
+        beta1 = beta1.to(tl.float32)
+        beta2 = beta2.to(tl.float32)
+        one_minus_beta1 = one_minus_beta1.to(tl.float32)
+        one_minus_beta2 = one_minus_beta2.to(tl.float32)
+        lr = lr.to(tl.float32)
+        eps = eps.to(tl.float32)
+        step_size = step_size.to(tl.float32)
+        wd_decay = wd_decay.to(tl.float32)
+
+        g = tl.load(grad_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+        raw_g = tl.load(raw_grad_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+        m_old = tl.load(m_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+        p = tl.load(p_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+
+        computed_m = beta1 * m_old + one_minus_beta1 * g
+
+        if update_variance:
+            v_old = tl.load(v_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+            new_v = beta2 * v_old + one_minus_beta2 * g * g
+            tl.store(v_ptr + offsets, new_v, mask=mask)
+        else:
+            new_v = tl.zeros_like(p)
+
+        trust = tl.load(trust_ptr + tid).to(tl.float32)
+        if wd_decay > 0.0:
+            p = p * (1.0 - wd_decay)
+
+        if apply_quantum:
+            qd_contrib = tl.load(qd_contrib_ptr + tid).to(tl.float32)
+            p = p * (1.0 - lr * qd_contrib * (2.0 * tl.sigmoid(2.0 * tl.abs(raw_g)) - 1.0))
+
+        if lion:
+            sign = tl.where(computed_m > 0, 1.0, tl.where(computed_m < 0, -1.0, 0.0))
+            p = p - lr * (sign * trust)
+            new_m = beta2 * m_old + one_minus_beta2 * g
+            tl.store(m_ptr + offsets, new_m, mask=mask)
+        else:
+            if update_momentum:
+                tl.store(m_ptr + offsets, computed_m, mask=mask)
+            denom = (tl.sqrt(new_v) + eps) / trust
             p = p + (-step_size) * (computed_m / denom)
 
         tl.store(p_ptr + offsets, p, mask=mask)
@@ -354,21 +438,21 @@ def launch_decay_adam(
     lr: float,
     eps: float,
     step_size: float,
-    total_scalar_decay: torch.Tensor,
-    wd_only_decay: torch.Tensor,
+    wd_decay: float,
+    trust: torch.Tensor,
     qd_contrib: torch.Tensor,
     apply_quantum: bool,
     lion: bool,
     beta1: float,
     beta2: float,
 ) -> None:
-    """Apply chaos/weight decay and Adam or Lion param update.
+    """Apply decoupled weight decay and the trust-scaled Adam or Lion update.
 
-    ``total_scalar_decay``, ``wd_only_decay``, and ``qd_contrib`` are now
-    1-element float32 CUDA tensors (not Python floats). The kernel reads
-    them straight off the device pointer, so the launch never forces a
-    device-to-host sync — the values are exactly what ``.item()`` would
-    have returned, just never pulled onto the CPU.
+    ``trust`` and ``qd_contrib`` are 1-element float32 CUDA tensors (not
+    Python floats). The kernel reads them straight off the device pointer,
+    so the launch never forces a device-to-host sync — the values are
+    exactly what ``.item()`` would have returned, just never pulled onto
+    the CPU.
     """
     _require_triton()
     n = param.numel()
@@ -385,8 +469,8 @@ def launch_decay_adam(
         float(lr),
         float(eps),
         float(step_size),
-        total_scalar_decay,
-        wd_only_decay,
+        float(wd_decay),
+        trust,
         qd_contrib,
         apply_quantum,
         lion,
@@ -412,8 +496,8 @@ def launch_fused_step(
     lr: float,
     eps: float,
     step_size: float,
-    total_scalar_decay: torch.Tensor,
-    wd_only_decay: torch.Tensor,
+    wd_decay: float,
+    trust: torch.Tensor,
     qd_contrib: torch.Tensor,
     apply_quantum: bool,
     lion: bool,
@@ -454,8 +538,8 @@ def launch_fused_step(
         float(lr),
         float(eps),
         float(step_size),
-        total_scalar_decay,
-        wd_only_decay,
+        float(wd_decay),
+        trust,
         qd_contrib,
         grad_centralize and n_leaders > 1 and elems_per_leader > 1,
         update_variance,
@@ -467,3 +551,83 @@ def launch_fused_step(
         n_leaders,
         BLOCK=block,
     )
+
+
+def _tl_param_dtype(dtype: torch.dtype):
+    if not _HAS_TRITON:
+        return None
+    if dtype == torch.float32:
+        return tl.float32
+    if dtype == torch.float16:
+        return tl.float16
+    if dtype == torch.bfloat16:
+        return tl.bfloat16
+    return None
+
+
+def launch_multi_fused_step(
+    grad_ptrs: torch.Tensor,
+    raw_grad_ptrs: torch.Tensor,
+    param_ptrs: torch.Tensor,
+    momentum_ptrs: torch.Tensor,
+    variance_ptrs: torch.Tensor,
+    numels: torch.Tensor,
+    tensor_id: torch.Tensor,
+    block_off: torch.Tensor,
+    total_blocks: int,
+    wd_decay: float,
+    trust: torch.Tensor,
+    qd_contrib: torch.Tensor,
+    *,
+    apply_quantum: bool,
+    lion: bool,
+    beta1: float,
+    beta2: float,
+    lr: float,
+    eps: float,
+    step_size: float,
+    param_dtype: torch.dtype,
+) -> bool:
+    """One Triton launch for an entire homogeneous parameter group.
+
+    Per-tensor chaos scalars live in length-``N`` fp32 vectors; pointer and
+    block-mapping tables are built once and cached on the host side.
+    Returns False when the caller should fall back to per-tensor fused launches.
+    """
+    _require_triton()
+    param_tl = _tl_param_dtype(param_dtype)
+    if param_tl is None:
+        return False
+    if total_blocks == 0:
+        return True
+    block = 256
+    grid = (total_blocks,)
+    update_variance = not lion
+    update_momentum = not lion
+    _multi_fused_step_kernel[grid](
+        grad_ptrs,
+        raw_grad_ptrs,
+        param_ptrs,
+        momentum_ptrs,
+        variance_ptrs,
+        numels,
+        tensor_id,
+        block_off,
+        float(wd_decay),
+        trust,
+        qd_contrib,
+        apply_quantum,
+        lion,
+        float(beta1),
+        float(beta2),
+        float(1.0 - beta1),
+        float(1.0 - beta2),
+        float(lr),
+        float(eps),
+        float(step_size),
+        update_variance,
+        update_momentum,
+        PARAM_DTYPE=param_tl,
+        BLOCK=block,
+    )
+    return True
