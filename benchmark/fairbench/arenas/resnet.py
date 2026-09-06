@@ -29,6 +29,12 @@ from ..datasets import (
 )
 from ..logging_utils import LOGGER
 from .base import Arena
+
+try:
+    from psilogic.presets import as_fairbench_kwargs, vision_defaults
+except ImportError:  # pragma: no cover
+    as_fairbench_kwargs = None  # type: ignore[assignment]
+    vision_defaults = None  # type: ignore[assignment]
 from .vit import _SyntheticImages
 
 
@@ -147,12 +153,16 @@ class ResNetArena(Arena):
         return {"val_loss": total_loss / max(n, 1), "val_acc": correct / max(n, 1)}
 
     def psilogic_kwargs(self) -> dict[str, Any]:
-        # CNN/vision preset analog.
+        if as_fairbench_kwargs is not None and vision_defaults is not None:
+            return as_fairbench_kwargs(vision_defaults())
         return dict(
             gamma=0.04,
             chaos_tau=0.40,
+            chaos_warmup=-1,
             adaptive_tau=True,
             tau_scale=2.5,
             max_cancel=0.04,
             agc_clip=0.02,
+            grad_centralize=True,
+            quantum_decay=0.0,
         )

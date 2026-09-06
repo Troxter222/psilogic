@@ -30,6 +30,12 @@ from ..logging_utils import LOGGER
 from ..models import GPT, GPTConfig
 from .base import Arena
 
+try:
+    from psilogic.presets import as_fairbench_kwargs, gpt_scratch_defaults
+except ImportError:  # pragma: no cover - editable install expected for FairBench
+    as_fairbench_kwargs = None  # type: ignore[assignment]
+    gpt_scratch_defaults = None  # type: ignore[assignment]
+
 
 class _BlockDataset(Dataset):
     """Samples fixed-length ``(input, target)`` windows from a 1-D token array.
@@ -220,19 +226,21 @@ class NLPArena(Arena):
         return {"val_loss": avg, "perplexity": ppl}
 
     def psilogic_kwargs(self) -> dict[str, Any]:
-        # Bare GPT-scratch defaults (match PsiLogic constructor / gpt_scratch
-        # preset): no AGC, no grad centralize — FairBench follow-ups showed
-        # those extras hurt TinyStories vs AdamW. Conservative tau for LM.
-        kwargs = dict(
-            gamma=0.02,
-            chaos_tau=0.40,
-            adaptive_tau=True,
-            tau_scale=3.0,
-            max_cancel=0.03,
-            agc_clip=0.0,
-            grad_centralize=False,
-        )
-        # Optional per-run overrides (ablation / hyperparam sweeps).
+        # Source of truth: psilogic.presets.gpt_scratch_defaults (no AGC / no GC).
+        if as_fairbench_kwargs is not None and gpt_scratch_defaults is not None:
+            kwargs = as_fairbench_kwargs(gpt_scratch_defaults())
+        else:
+            kwargs = dict(
+                gamma=0.02,
+                chaos_tau=0.40,
+                chaos_warmup=-1,
+                adaptive_tau=True,
+                tau_scale=2.0,
+                max_cancel=0.03,
+                agc_clip=0.0,
+                grad_centralize=False,
+                quantum_decay=0.0,
+            )
         overrides = self.extra.get("psilogic_overrides")
         if isinstance(overrides, dict) and overrides:
             kwargs.update(overrides)

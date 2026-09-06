@@ -21,19 +21,31 @@ htmlcov/
 # FairBench dataset cache (~2 GB downloads)
 benchmark/data/
 
+# Scratch / local FairBench runs (citation-grade snapshot is results/full/ only)
+results/
+benchmark/results/local_full/
+benchmark/results/plots/
+# Keep committed reference CSVs/plots under full/; ignore other sibling dumps
+benchmark/results/*.csv
+!benchmark/results/full/
+
 # LaTeX / arXiv build artifacts
 .tectonic-cache/
 arxiv/paper.pdf
 psilogic-arxiv.pdf
+psilogic-arxiv-corrected.pdf
+PsiLogic_Unified_Article.pdf
 tools/tectonic/
 
 # arXiv / release bundles
 *.tar.gz
 *.zip
 
-# IDE / OS
+# IDE / OS / agent tooling
 .idea/
 .vscode/
+.agents/
+.codex/
 .DS_Store
 Thumbs.db
 *.swp
@@ -42,3 +54,6 @@ Thumbs.db
 # Profiling
 *.prof
 *.nsys-rep
+
+# Optional local lock (document uv sync in CONTRIBUTING before committing)
+# uv.lock
