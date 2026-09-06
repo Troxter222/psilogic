@@ -100,10 +100,12 @@ jobs:
           python-version: "3.11"
 
       - name: Install ruff
-        run: pip install ruff
+        # Pin to the same major line as local/dev so format check does not
+        # drift when pip resolves a brand-new ruff release on the runner.
+        run: pip install "ruff>=0.4,<1"
 
       - name: Check formatting
-        run: ruff format --check psilogic tests benchmark examples
+        run: ruff format --check psilogic tests benchmark examples scripts benchmark_nlp_5000_psilogic.py
 
   typecheck:
     name: Mypy

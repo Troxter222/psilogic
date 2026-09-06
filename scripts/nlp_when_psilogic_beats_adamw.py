@@ -413,11 +413,7 @@ def build_smoke_experiments() -> list[Experiment]:
 
 
 def all_experiments() -> dict[str, Experiment]:
-    items = (
-        build_regime_experiments()
-        + build_ablation_experiments()
-        + build_combo_experiments()
-    )
+    items = build_regime_experiments() + build_ablation_experiments() + build_combo_experiments()
     return {e.name: e for e in items}
 
 
@@ -847,9 +843,7 @@ def select_experiments(args: argparse.Namespace) -> dict[str, Experiment]:
         wanted = [x.strip() for x in args.only.split(",") if x.strip()]
         missing = [n for n in wanted if n not in catalog]
         if missing:
-            raise SystemExit(
-                f"Unknown experiments: {missing}\nAvailable: {', '.join(catalog)}"
-            )
+            raise SystemExit(f"Unknown experiments: {missing}\nAvailable: {', '.join(catalog)}")
         return {n: catalog[n] for n in wanted}
 
     if args.suite == "regimes":
@@ -918,10 +912,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         names = names[: args.max_experiments]
         experiments = {n: experiments[n] for n in names}
 
-    print(
-        f"Planning {len(experiments)} experiments | seeds={args.seeds} | "
-        f"out={args.output_dir}"
-    )
+    print(f"Planning {len(experiments)} experiments | seeds={args.seeds} | out={args.output_dir}")
 
     results: list[ExpResult] = []
     failures = 0

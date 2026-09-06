@@ -536,9 +536,7 @@ def run_experiment(exp: Experiment, args: argparse.Namespace) -> ExpResult:
         "why": exp.why,
         "toggles": exp.toggles,
         "psi_overrides": exp.psi_overrides,
-        "hypothesis": (
-            "bare extras (no AGC/centralize) + softer tau_scale so cancel gate opens"
-        ),
+        "hypothesis": ("bare extras (no AGC/centralize) + softer tau_scale so cancel gate opens"),
         "experiment": asdict(exp),
     }
     with (out / "experiment.json").open("w", encoding="utf-8") as fh:
@@ -612,11 +610,7 @@ def print_table(results: list[ExpResult]) -> None:
         p = f"{r.p_value:.3f}" if math.isfinite(r.p_value) else "n/a"
         delta = f"{r.delta_ppl:+.3f}" if math.isfinite(r.delta_ppl) else "n/a"
         spike = f"{r.spike_rate_mean:.3f}" if math.isfinite(r.spike_rate_mean) else "n/a"
-        gap = (
-            f"{r.fast_minus_slow_mean:+.4f}"
-            if math.isfinite(r.fast_minus_slow_mean)
-            else "n/a"
-        )
+        gap = f"{r.fast_minus_slow_mean:+.4f}" if math.isfinite(r.fast_minus_slow_mean) else "n/a"
         mark = "✓" if r.winner == "psilogic" else ("·" if r.winner == "tie" else "✗")
         note = r.toggles
         if len(note) > 36:
@@ -642,7 +636,9 @@ def print_table(results: list[ExpResult]) -> None:
         default = next((r for r in core if r.name == "paper_default"), None)
         print("\nDecision hint (paper-like cells):")
         if default and math.isfinite(default.delta_ppl):
-            print(f"  paper_default Δ={default.delta_ppl:+.3f}  spike={default.spike_rate_mean:.4f}")
+            print(
+                f"  paper_default Δ={default.delta_ppl:+.3f}  spike={default.spike_rate_mean:.4f}"
+            )
         print(
             f"  best among control/core: {best.name}  Δ={best.delta_ppl:+.3f}  "
             f"spike={best.spike_rate_mean:.4f}  ({best.toggles})"
@@ -695,11 +691,7 @@ def write_markdown(results: list[ExpResult], path: Path) -> None:
         p = f"{r.p_value:.3f}" if math.isfinite(r.p_value) else "n/a"
         delta = f"{r.delta_ppl:+.3f}" if math.isfinite(r.delta_ppl) else "n/a"
         spike = f"{r.spike_rate_mean:.4f}" if math.isfinite(r.spike_rate_mean) else "n/a"
-        gap = (
-            f"{r.fast_minus_slow_mean:+.5f}"
-            if math.isfinite(r.fast_minus_slow_mean)
-            else "n/a"
-        )
+        gap = f"{r.fast_minus_slow_mean:+.5f}" if math.isfinite(r.fast_minus_slow_mean) else "n/a"
         lines.append(
             f"| {i} | `{r.name}` | {r.family} | **{r.winner}** | {delta} | {aw} | {psi} | "
             f"{p} | {spike} | {gap} | {r.toggles} |"
@@ -760,7 +752,11 @@ def select_experiments(args: argparse.Namespace) -> dict[str, Experiment]:
         return {e.name: e for e in build_control_experiments()}
     if args.suite == "core":
         # Include paper_default + bare_only as anchors next to the tau grid.
-        anchors = {e.name: e for e in build_control_experiments() if e.name in ("paper_default", "bare_only")}
+        anchors = {
+            e.name: e
+            for e in build_control_experiments()
+            if e.name in ("paper_default", "bare_only")
+        }
         core = {e.name: e for e in build_core_experiments()}
         return {**anchors, **core}
     if args.suite == "long_ctx":

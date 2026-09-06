@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 import torch
 import torch.nn as nn
@@ -18,6 +20,10 @@ def _torch_version_tuple() -> tuple[int, int]:
 @pytest.mark.skipif(
     _torch_version_tuple() < (2, 3),
     reason="Dynamo cannot read Parameter.grad under fullgraph on torch < 2.3",
+)
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="torch.compile fullgraph needs MSVC (cl.exe); not available on Windows CI runners",
 )
 def test_torch_compile_fullgraph() -> None:
     model = nn.Sequential(nn.Linear(10, 10), nn.ReLU(), nn.Linear(10, 2))
