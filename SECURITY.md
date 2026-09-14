@@ -1,64 +1,38 @@
-# Security Policy
+# Security
 
-## Supported Versions
-
-Security fixes are provided for the **latest release on PyPI** and the `main` branch.
+Patches go to the latest release on PyPI and to `main`.
 
 | Version | Supported |
 |---------|-----------|
-| 0.6.x (latest) | Yes |
-| 0.5.x | Best-effort until superseded |
-| < 0.5 | No |
+| 0.6.x (latest) | yes |
+| 0.5.x | until a newer line replaces it |
+| < 0.5 | no |
 
-Always upgrade to the newest patch on PyPI when a security fix ships.
+When a fix ships, install the newest patch from PyPI.
 
-## Reporting a Vulnerability
+## Reporting
 
-**Please do not open a public GitHub issue for security vulnerabilities.**
+Do not open a public GitHub issue for a vulnerability.
 
-Report security issues privately using one of these channels:
+1. GitHub Security Advisories (preferred): [Report a vulnerability](https://github.com/Troxter222/psilogic/security/advisories/new)
+2. Email [troxtergrif@gmail.com](mailto:troxtergrif@gmail.com), subject `PsiLogic Security`
 
-1. **GitHub Security Advisories** (preferred): [Report a vulnerability](https://github.com/Troxter222/psilogic/security/advisories/new)
-2. **Email**: troxtergrif@gmail.com — subject line `PsiLogic Security`
+Include what is wrong and what it can do, how to reproduce it (a proof-of-concept if you have one), which versions are affected, and a fix if you already have one.
 
-Include:
-
-- A description of the issue and its potential impact
-- Steps to reproduce (proof-of-concept if available)
-- Affected version(s)
-- Suggested fix, if you have one
-
-We aim to acknowledge reports within **72 hours** and to publish a fix or mitigation plan within **14 days** for confirmed issues.
+I will reply within 72 hours. For a confirmed issue I try to ship a fix, or at least a mitigation note, within 14 days.
 
 ## Scope
 
-### In scope
+In scope: the `psilogic` package on PyPI, checkpoint loading and `state_dict` migration, distributed sync, and `psilogic/integrations/` when used as documented.
 
-- The installable `psilogic` package (`psilogic/` on PyPI)
-- State handling, checkpoint loading (`state_dict` migration), and distributed sync logic
-- Optional integrations under `psilogic/integrations/` when used as documented
+Out of scope: PyTorch, HuggingFace, Lightning, and other dependencies (those go upstream); scripts under `benchmark/` (not in the wheel); a bad learning rate or other training settings.
 
-### Out of scope
+## What the package does
 
-- Third-party dependencies (PyTorch, HuggingFace, Lightning, etc.) — report those upstream
-- Benchmark scripts under `benchmark/` (research tooling, not shipped on PyPI)
-- Misconfiguration or misuse of training hyperparameters
+`import psilogic` does not open a network connection and does not send telemetry. There is no `eval`, `exec`, or dynamic import of a user string. Checkpoints are PyTorch `state_dict` only. Migration is version-tagged and written out in code, not loaded as arbitrary objects beyond what PyTorch already does.
 
-## Security Design
+`benchmark/` can notify Telegram if `PSILOGIC_TG_TOKEN` and `PSILOGIC_TG_CHAT` are set. That code is not in the PyPI wheel and is not imported with the package.
 
-The core optimizer is designed to be **offline and telemetry-free**:
+`psilogic/integrations/` passes training to HuggingFace Trainer or PyTorch Lightning. If those stacks talk to the network, that is the framework, not PsiLogic.
 
-| Property | Core package (`psilogic/`) |
-|----------|----------------------------|
-| Network calls | **None** — no HTTP, sockets, or remote logging |
-| Telemetry / analytics | **None** |
-| Arbitrary code execution | **None** — no `eval`, `exec`, or dynamic imports of user strings |
-| Checkpoint loading | Uses PyTorch `state_dict` only; migration logic is version-tagged and explicit |
-
-Optional benchmark tooling (`benchmark/`) may send notifications when `PSILOGIC_TG_TOKEN` and `PSILOGIC_TG_CHAT` environment variables are set. This code is **not** part of the PyPI wheel and is never invoked by `import psilogic`.
-
-Framework integrations (`psilogic/integrations/`) delegate training to HuggingFace Trainer or PyTorch Lightning; network activity in those stacks is governed by the host framework, not PsiLogic.
-
-## Disclosure
-
-We follow coordinated disclosure. Credit will be given in the release notes unless you request anonymity.
+Credit goes in the release notes unless you ask to stay anonymous.
