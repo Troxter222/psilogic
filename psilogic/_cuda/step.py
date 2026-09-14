@@ -202,6 +202,68 @@ def _ensure_multitensor_tables(
     return mt
 
 
+# Split a tensor across several reduction programs once it exceeds this many
+# elements, so one huge embedding does not serialize on a single SM. Capped
+# so the host-side ``partials.sum`` stays a tiny [3, N, SPLIT] reduction.
+_CHAOS_REDUCE_ELEMS_PER_PROGRAM = 1 << 16
+_CHAOS_REDUCE_MAX_SPLIT = 64
+
+
+def _multi_chaos_reduce(
+    mt: dict[str, Any],
+    grads: list[torch.Tensor],
+    *,
+    eps: float,
+) -> tuple[torch.Tensor, torch.Tensor] | None:
+    """One-launch ``(||g||, disagree)`` vectors for a homogeneous group.
+
+    Replaces the per-tensor :func:`grad_momentum_disagreement` loop (and the
+    separate ``_foreach_norm``) with a single Triton reduction over the
+    post-AGC/post-centralize gradients and the *pre-update* momentum. The
+    cosine, clamp and ``0.5 * (1 - cos)`` are evaluated in the same order as
+    the scalar helper, just on ``(N,)`` vectors. Returns None when the
+    kernel cannot run for this group.
+    """
+    n = len(grads)
+    if n == 0:
+        return None
+    max_numel = max(int(g.numel()) for g in grads)
+    split = min(
+        _CHAOS_REDUCE_MAX_SPLIT,
+        max(1, -(-max_numel // _CHAOS_REDUCE_ELEMS_PER_PROGRAM)),
+    )
+    partials = mt.get("chaos_partials")
+    if not isinstance(partials, torch.Tensor) or tuple(partials.shape) != (3, n, split):
+        partials = torch.empty(3, n, split, device=grads[0].device, dtype=torch.float32)
+        mt["chaos_partials"] = partials
+
+    ok = kernels.launch_multi_chaos_reduce(
+        mt["grad_ptrs"],
+        mt["m_ptrs"],
+        mt["numels"],
+        n,
+        partials,
+        split=split,
+        param_dtype=mt["param_dtype"],
+    )
+    if not ok:
+        return None
+
+    sums = partials.sum(dim=2) if split > 1 else partials[:, :, 0]
+    g_norm = torch.sqrt(sums[0])
+    m_norm = torch.sqrt(sums[2])
+    param_dtype = mt["param_dtype"]
+    if param_dtype != torch.float32:
+        # ``torch._foreach_norm`` on fp16/bf16 grads returns norms rounded to
+        # the grad dtype; mirror that so the chaos EMA sees the same input as
+        # the scalar reference path.
+        g_norm = g_norm.to(param_dtype)
+    denom = m_norm * g_norm.to(torch.float32) + eps
+    cos = torch.clamp(sums[1] / denom, min=-1.0, max=1.0)
+    disagree = 0.5 * (1.0 - cos)
+    return g_norm, disagree
+
+
 def _launch_per_tensor_fused(
     params_with_grad: list[torch.Tensor],
     states: list[dict[str, Any]],
@@ -462,24 +524,38 @@ def fused_group_step(
     else:
         grads = [_maybe_contiguous(g) for g in grads]
 
-    g_norms = torch.stack(torch._foreach_norm(grads))
-
-    gamma_eff, qd_eff = effective_gamma_and_qd(step, gamma_t_max, gamma, qd)
-    chaos_gain = effective_warmup(step, gamma_t_max, warmup_cfg)
-
-    # Grad-vs-momentum disagreement before the fused kernel mutates ``m``.
-    disagrees: list[torch.Tensor] = []
-    if chaos_gain > 0.0 and gamma_eff > 0:
-        disagrees = [
-            grad_momentum_disagreement(grad, state["m"], g_norms[i], step=state["t"], eps=eps)
-            for i, (state, grad) in enumerate(zip(states, grads))
-        ]
-
     cache = _group_cache(group)
     param_ids = tuple(id(p) for p in params_with_grad)
     if cache.get("param_ids") != param_ids:
         cache.clear()
         cache["param_ids"] = param_ids
+
+    # Pointer/block tables are needed both by the chaos reduction below and
+    # by the fused update at the end; build (or refresh) them once per step.
+    mt = _ensure_multitensor_tables(cache, params_with_grad, grads, raw_grads_buf, states)
+
+    gamma_eff, qd_eff = effective_gamma_and_qd(step, gamma_t_max, gamma, qd)
+    chaos_gain = effective_warmup(step, gamma_t_max, warmup_cfg)
+    chaos_active = chaos_gain > 0.0 and gamma_eff > 0
+
+    # Grad-vs-momentum disagreement must be read before the fused kernel
+    # mutates ``m``. Only launched when chaos can actually damp this step.
+    disagree_vec: torch.Tensor | None = None
+    g_norms: torch.Tensor | None = None
+    if chaos_active and step > 1 and mt is not None:
+        reduced = _multi_chaos_reduce(mt, grads, eps=eps)
+        if reduced is not None:
+            g_norms, disagree_vec = reduced
+
+    if g_norms is None:
+        g_norms = torch.stack(torch._foreach_norm(grads))
+    if chaos_active and disagree_vec is None:
+        disagree_vec = torch.cat(
+            [
+                grad_momentum_disagreement(grad, state["m"], g_norms[i], step=state["t"], eps=eps)
+                for i, (state, grad) in enumerate(zip(states, grads))
+            ]
+        )
 
     fast_vec, slow_vec, gn_avg_vec = _ensure_packed_chaos(cache, states, params_with_grad[0].device)
     sqrt_numels = _cached_sqrt_numels(cache, grads, fast_vec.device)
@@ -505,12 +581,12 @@ def fused_group_step(
     if (
         chaos_gain > 0.0
         and (isinstance(gamma_eff_vec, torch.Tensor) or gamma_eff_vec > 0)
-        and disagrees
+        and disagree_vec is not None
     ):
         soft_vec = soft_chaos_signal(
             slow_vec,
             fast_vec,
-            torch.cat(disagrees),
+            disagree_vec,
             adaptive_tau=adapt_tau,
             chaos_tau=chaos_tau,
             tau_scale=tau_scale,
@@ -548,7 +624,6 @@ def fused_group_step(
         bc2 = math.sqrt(1.0 - beta2**step)
         step_size = lr * bc2 / bc1
 
-    mt = _ensure_multitensor_tables(cache, params_with_grad, grads, raw_grads_buf, states)
     launched = False
     if mt is not None:
         launched = kernels.launch_multi_fused_step(
