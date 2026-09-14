@@ -372,6 +372,54 @@ if _HAS_TRITON:
 
         tl.store(p_ptr + offsets, p, mask=mask)
 
+    @triton.jit
+    def _multi_chaos_reduce_kernel(
+        grad_ptrs,
+        m_ptrs,
+        numels_ptr,
+        gg_out_ptr,  # [n_tensors * SPLIT] fp32 partial sums of g*g
+        gm_out_ptr,  # [n_tensors * SPLIT] fp32 partial sums of g*m
+        mm_out_ptr,  # [n_tensors * SPLIT] fp32 partial sums of m*m
+        SPLIT: tl.constexpr,
+        PARAM_DTYPE: tl.constexpr,
+        BLOCK: tl.constexpr,
+    ):
+        """Per-tensor ``sum(g*g)``, ``sum(g*m)``, ``sum(m*m)`` for a whole group.
+
+        Grid is ``(n_tensors, SPLIT)``: program ``(tid, sid)`` walks its
+        contiguous slice of tensor ``tid`` in ``BLOCK`` chunks with fp32
+        accumulators and writes exactly one partial per output. No atomics,
+        so the result is deterministic launch to launch; the host sums the
+        ``SPLIT`` partials (a no-op view when ``SPLIT == 1``).
+        """
+        tid = tl.program_id(0)
+        sid = tl.program_id(1)
+
+        g_ptr = tl.load(grad_ptrs + tid).to(tl.pointer_type(PARAM_DTYPE))
+        m_ptr = tl.load(m_ptrs + tid).to(tl.pointer_type(tl.float32))
+        n = tl.load(numels_ptr + tid).to(tl.int32)
+
+        per_split = tl.cdiv(n, SPLIT)
+        start = sid * per_split
+        end = tl.minimum(start + per_split, n)
+
+        acc_gg = tl.zeros([BLOCK], dtype=tl.float32)
+        acc_gm = tl.zeros([BLOCK], dtype=tl.float32)
+        acc_mm = tl.zeros([BLOCK], dtype=tl.float32)
+        for off in range(start, end, BLOCK):
+            idx = off + tl.arange(0, BLOCK)
+            mask = idx < end
+            g = tl.load(g_ptr + idx, mask=mask, other=0.0).to(tl.float32)
+            m = tl.load(m_ptr + idx, mask=mask, other=0.0).to(tl.float32)
+            acc_gg += g * g
+            acc_gm += g * m
+            acc_mm += m * m
+
+        out = tid * SPLIT + sid
+        tl.store(gg_out_ptr + out, tl.sum(acc_gg, axis=0))
+        tl.store(gm_out_ptr + out, tl.sum(acc_gm, axis=0))
+        tl.store(mm_out_ptr + out, tl.sum(acc_mm, axis=0))
+
 
 def launch_leader_sums(grad: torch.Tensor, n_leaders: int, elems_per_leader: int) -> torch.Tensor:
     _require_triton()
@@ -563,6 +611,40 @@ def _tl_param_dtype(dtype: torch.dtype):
     if dtype == torch.bfloat16:
         return tl.bfloat16
     return None
+
+
+def launch_multi_chaos_reduce(
+    grad_ptrs: torch.Tensor,
+    momentum_ptrs: torch.Tensor,
+    numels: torch.Tensor,
+    n_tensors: int,
+    partials: torch.Tensor,
+    *,
+    split: int,
+    param_dtype: torch.dtype,
+) -> bool:
+    """One launch: per-tensor ``sum(g*g)``, ``sum(g*m)``, ``sum(m*m)``.
+
+    ``partials`` is a preallocated fp32 ``[3, n_tensors, split]`` buffer;
+    every slot is overwritten, so it needs no zeroing between steps.
+    Returns False when the caller should fall back to per-tensor torch ops.
+    """
+    _require_triton()
+    param_tl = _tl_param_dtype(param_dtype)
+    if param_tl is None or n_tensors == 0:
+        return False
+    _multi_chaos_reduce_kernel[(n_tensors, split)](
+        grad_ptrs,
+        momentum_ptrs,
+        numels,
+        partials[0],
+        partials[1],
+        partials[2],
+        SPLIT=split,
+        PARAM_DTYPE=param_tl,
+        BLOCK=1024,
+    )
+    return True
 
 
 def launch_multi_fused_step(
