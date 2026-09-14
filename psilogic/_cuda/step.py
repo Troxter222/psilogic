@@ -510,9 +510,9 @@ def fused_group_step(
     grads = [p.grad for p in params_with_grad]
     if agc > 0.0:
         p_norms = torch.stack(torch._foreach_norm(params_with_grad))
-        g_norms = torch.stack(torch._foreach_norm(grads))
+        agc_g_norms = torch.stack(torch._foreach_norm(grads))
         max_norms = agc * p_norms.clamp(min=1e-3)
-        clip_factors = (max_norms / g_norms.clamp(min=1e-6)).clamp(max=1.0)
+        clip_factors = (max_norms / agc_g_norms.clamp(min=1e-6)).clamp(max=1.0)
         torch._foreach_mul_(grads, clip_factors.unbind())
 
     raw_grads_buf = [_maybe_contiguous(g) for g in grads]
