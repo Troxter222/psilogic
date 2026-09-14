@@ -1,191 +1,185 @@
-# FairBench — Bias-Free Cross-Domain Optimizer Benchmark
+# FairBench
 
-A modular, publication-grade PyTorch framework for a **fair** comparison of four
-optimizers across four heterogeneous deep-learning arenas:
+PyTorch harness for comparing Adam, AdamW, Lion, and PsiLogic on four tasks.
+Each optimizer gets its own learning-rate search. Runs that share a seed start
+from the same weights. Results are mean ± std, with a Welch *t*-test (p-value
+and Cohen's *d*).
 
 | Optimizer | Source |
 |-----------|--------|
-| **Adam**     | `torch.optim.Adam` (coupled L2) |
-| **AdamW**    | `torch.optim.AdamW` (decoupled decay) |
-| **Lion**     | `lion_pytorch` / `pytorch_optimizer` if installed, else a clean built-in reference impl |
-| **PsiLogic** | [`psilogic`](https://pypi.org/project/psilogic/) — Active-Cancellation optimizer |
+| Adam | `torch.optim.Adam` (coupled L2) |
+| AdamW | `torch.optim.AdamW` (decoupled decay) |
+| Lion | `lion_pytorch` or `pytorch_optimizer` if installed, otherwise the built-in reference |
+| PsiLogic | [`psilogic`](https://pypi.org/project/psilogic/) |
 
-The design goal is to **eliminate tuning bias** and meet the methodological bar
-of NeurIPS/ICLR submissions: every optimizer gets its own learning-rate search,
-all runs start from *identical* weights per seed, results are reported as
-**Mean ± Std** over multiple seeds, and differences are checked with a
-**Welch t-test** (p-value + Cohen's *d*).
-
----
-
-## 1. Arenas
+## Arenas
 
 | # | Arena | Task | Model | Dataset |
 |---|-------|------|-------|---------|
-| 1 | `nlp`       | Language modeling   | small GPT (nanoGPT-style, built-in) | TinyStories (HF `datasets`) |
-| 2 | `vit`       | Image classification| `vit_tiny_patch16_224` (`timm`)     | CIFAR-100 @ 224×224 |
-| 3 | `resnet`    | Image classification| ResNet-18/34 (`torchvision`)        | Tiny ImageNet (auto-download) |
-| 4 | `diffusion` | Generative modeling | unconditional DDPM + UNet (built-in)| CelebA @ 64×64 |
+| 1 | `nlp` | language modeling | small GPT (nanoGPT-style, built-in) | TinyStories (HF `datasets`) |
+| 2 | `vit` | image classification | `vit_tiny_patch16_224` (`timm`) | CIFAR-100 @ 224×224 |
+| 3 | `resnet` | image classification | ResNet-18/34 (`torchvision`) | Tiny ImageNet (auto-download) |
+| 4 | `diffusion` | generative modeling | unconditional DDPM + UNet (built-in) | CelebA @ 64×64 |
 
-Every arena degrades gracefully: if an optional dependency (`timm`, `datasets`,
-`torchmetrics`) or a dataset download is unavailable, a built-in model fallback
-or a synthetic dataset is used so the benchmark always completes.
+If `timm`, `datasets`, or `torchmetrics` is missing, or a download fails, that
+arena falls back to a built-in model or a synthetic dataset so the run still
+finishes.
 
-## 2. Fair-Play protocol
+## Protocol
 
-**Stage 1 — LR sweep (per optimizer).** A short budget (`--sweep-steps`) over a
-log-spaced LR grid (`--lr-min … --lr-max`, `--num-lrs`). The LR with the best
-validation metric is selected. This removes per-optimizer tuning bias.
+Fair-Play has two stages.
 
-**Stage 2 — Multi-seed evaluation.** Using the selected LR, each optimizer is
-trained over `N` seeds (`--seeds`). For a given seed, **all optimizers start
-from the same initial weights** (snapshotted once and reloaded per optimizer)
-and see the **same data order** (seeded `DataLoader`).
+**Stage 1, LR sweep.** Short budget (`--sweep-steps`) on a log-spaced grid
+(`--lr-min` … `--lr-max`, `--num-lrs`). The LR with the best validation metric
+is kept. Other hyperparameters stay at each optimizer's defaults.
 
-## 3. Metrics (paper-ready)
+**Stage 2, seeds.** That LR, `N` seeds (`--seeds`). For a given seed every
+optimizer starts from the same snapshot and sees the same `DataLoader` order.
 
-* **Quality:** train/val loss, val accuracy (ViT/ResNet), perplexity (GPT),
-  MSE loss & optional **FID** (diffusion).
-* **Performance:** per-step / per-epoch wall-clock time, throughput, and peak
-  VRAM via `torch.cuda.max_memory_allocated()`.
-* **Hardware provenance:** detected GPU name and VRAM are printed at startup,
-  logged per run, saved in `config.json` (`runtime_hardware`) and written to
-  every CSV/plot for reproducibility.
-* **PsiLogic diagnostics:** `chaos_t`, `fast_t`, `slow_t`, `fast_t − slow_t`
-  and spike rate over time (see `fairbench/probe.py`).
-* **Statistics:** Mean ± Std plus a Welch t-test (PsiLogic vs each baseline).
+## What gets logged
 
-## 4. Hardware / performance
+Quality: train/val loss, val accuracy (ViT, ResNet), perplexity (GPT), MSE and
+optional FID (diffusion).
 
-* Single-GPU oriented; **AMP** via `torch.amp.autocast` (+ `GradScaler` for fp16).
-* `foreach=True` / `use_foreach=True` batched optimizer kernels where supported.
-* Automatic **CUDA OOM handling**: a run is retried with a halved batch size
-  (up to 2×) and, if still failing, recorded as a failure without aborting the
-  benchmark.
+Timing: per-step and per-epoch wall time, throughput, peak VRAM from
+`torch.cuda.max_memory_allocated()`. GPU name and VRAM are printed at startup,
+stored in `config.json` under `runtime_hardware`, and written into the CSVs
+and plots.
 
-## 5. Logging & outputs
+PsiLogic extras in `fairbench/probe.py`: `chaos_t`, `fast_t`, `slow_t`,
+`fast_t − slow_t`, spike rate.
 
-Written under `--output-dir`. The reference H100 run is committed at
-`results/full/` (used by README, PAPER, and logs.md).
+Statistics: mean ± std, plus Welch *t*-test of PsiLogic against each baseline.
+
+## Hardware
+
+Single GPU. AMP through `torch.amp.autocast` (`GradScaler` on fp16). Batched
+kernels where the optimizer supports `foreach=True` / `use_foreach=True`.
+
+On CUDA OOM the run retries with half the batch size, up to twice. If it still
+fails, that cell is recorded as a failure and the rest of the benchmark
+continues.
+
+## Outputs
+
+Written under `--output-dir`. The H100 reference run is committed at
+`results/full/` and is what README, PAPER, and logs.md cite.
 
 ```
 results/full/
-├── config.json          # the full, reproducible run configuration
-├── lr_sweep.csv         # Stage-1 trial results
-├── steps.csv            # long-format per-step metrics (Pandas-ready)
-├── summary.csv          # per (arena, optimizer, seed) final metrics
-├── aggregate.csv        # Mean ± Std over seeds
+├── config.json          # full run configuration
+├── lr_sweep.csv         # stage 1
+├── steps.csv            # per-step metrics, long format
+├── summary.csv          # one row per (arena, optimizer, seed)
+├── aggregate.csv        # mean ± std over seeds
 ├── significance.csv     # Welch t-test: p-value, Cohen's d
-├── tensorboard/         # grouped arena/optimizer/seed
-└── plots/               # learning curves with ±std shaded bands
+├── tensorboard/
+└── plots/               # learning curves, ±std band
 ```
 
-TensorBoard and **Weights & Biases** are optional; W&B groups runs by optimizer
-(`group`) and arena (`job_type`).
+TensorBoard and Weights & Biases are optional. W&B uses `group` for the
+optimizer and `job_type` for the arena.
 
-## 6. Installation
+## Install
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Only `torch`, `torchvision`, `numpy` and `psilogic` are strictly required; the
-rest unlock individual arenas / features.
+Strictly required: `torch`, `torchvision`, `numpy`, `psilogic`. The rest turn
+on individual arenas.
 
-## 7. Usage
+## Usage
 
-### Pre-download datasets (recommended for RunPod / slow cloud links)
+### Datasets
 
-Toronto / Stanford mirrors can crawl at **~20 KB/s** on some pods (CIFAR-100
-would take hours). Download once on your PC, upload the folder, then run offline.
+Toronto and Stanford mirrors can sit at about 20 KB/s on some pods. CIFAR-100
+alone can take hours that way. Download once on a normal connection, upload
+the folder, run offline.
 
 ```bash
-# Step 0 - set up variable
 export HF_HUB_ENABLE_HF_TRANSFER=1
 
-# Step 1 — on your PC (fast home internet), ~2 GB total:
+# on your machine, about 2 GB
 python -m fairbench.download --data-root ./data
 
-# Step 2 — archive and upload to the pod:
 tar -czf fairbench_data.tar.gz -C ./data .
 
-# Step 3 — on RunPod / Jupyter:
+# on the pod
 mkdir -p /workspace/data && tar -xzf fairbench_data.tar.gz -C /workspace/data
 
-# Step 4 — benchmark with zero network downloads:
 python -m fairbench --data-root /workspace/data --offline --output-dir results/full
 ```
 
-Check what is cached:
+Check the cache:
 
 ```bash
 python -m fairbench.download --data-root ./data --check-only
 ```
 
-Expected layout under `data/`:
+Expected layout:
 
 ```
 data/
-├── tinystories/          # ~2 MB (pre-tokenized TinyStories subset)
+├── tinystories/          # ~2 MB, pre-tokenized TinyStories subset
 ├── cifar-100-python/     # ~169 MB
 ├── tiny-imagenet-200/    # ~600 MB extracted
 ├── celeba/               # ~1.3 GB
 └── manifest.json
 ```
 
-Alternative one-liner from the main CLI:
+Same download from the main CLI:
 
 ```bash
 python -m fairbench --download-datasets --data-root ./data
 ```
 
-### Full benchmark
+### Runs
 
 ```bash
 python -m fairbench --output-dir results/full
 
-# A single arena, with W&B
+# one arena, W&B on
 python -m fairbench --arenas vit --wandb --wandb-project my-bench
 
-# Fast end-to-end smoke test on synthetic data (no downloads, CPU-friendly)
+# smoke test, synthetic data, no downloads
 python -m fairbench --smoke-test --device cpu --no-amp --num-workers 0
 
-# Skip the sweep and pin a learning rate
+# skip the sweep
 python -m fairbench --arenas resnet --no-sweep --fixed-lr 1e-3
 
-# Generate a LaTeX results table (booktabs, bold-best, significance stars)
+# LaTeX table (booktabs, best in bold, significance stars)
 python -m fairbench.analysis --output-dir results/full --metric val_acc --higher-better
 ```
 
-Run `python -m fairbench --help` for the full list of flags.
+`python -m fairbench --help` lists the flags.
 
-## 8. Code layout
+## Code
 
 ```
 fairbench/
-├── config.py        # typed dataclass configuration
-├── optimizers.py    # optimizer factory + reference Lion
-├── probe.py         # PsiLogic chaos diagnostics (chaos_t, fast/slow)
-├── metrics.py       # timing, VRAM, CSV, Mean±Std, Welch t-test
-├── logging_utils.py # console + TensorBoard + W&B
-├── plotting.py      # learning curves with ±std bands
-├── utils.py         # seeding, AMP, schedulers, OOM detection
+├── config.py        # dataclass config
+├── optimizers.py    # factory + reference Lion
+├── probe.py         # PsiLogic chaos diagnostics
+├── metrics.py       # timing, VRAM, CSV, mean±std, Welch t-test
+├── logging_utils.py # console, TensorBoard, W&B
+├── plotting.py      # learning curves
+├── utils.py         # seeding, AMP, schedulers, OOM
 ├── runner.py        # TrainEngine, LRSweeper, BenchmarkRunner
-├── analysis.py      # CSV -> LaTeX tables
-├── cli.py           # command-line interface
+├── analysis.py      # CSV to LaTeX
+├── cli.py
 ├── models/          # GPT, UNet/DDPM
-└── arenas/          # base + nlp / vit / resnet / diffusion adapters
+└── arenas/          # nlp, vit, resnet, diffusion
 ```
 
-## 9. Reproducibility & fairness notes
+## Fairness notes
 
-* Each optimizer runs in its **canonical** form (Adam = coupled L2,
-  AdamW/Lion/PsiLogic = decoupled decay); we deliberately do not retrofit one
-  algorithm's regularizer onto another.
-* Only the **learning rate** is tuned; all other hyperparameters are each
-  optimizer's published defaults, held constant across the benchmark.
-* PsiLogic per-arena presets (γ, chaos τ, …) mirror the library's published
-  architecture presets and are likewise held fixed.
+Adam uses coupled L2. AdamW, Lion, and PsiLogic use decoupled decay. One
+optimizer's regularizer is not copied onto another.
+
+Only the learning rate is swept. Everything else stays at that optimizer's
+published defaults. PsiLogic's per-arena presets (γ, chaos τ, and the rest)
+are the library presets, held fixed for the run.
 
 ## License
 
