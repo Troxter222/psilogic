@@ -66,10 +66,11 @@ For task defaults use `PsiLogicNLP` / `PsiLogicGPT` / `PsiLogicViT` /
 Tested with: AMP / bf16, DDP, grad accumulation, `torch.compile`, foreach +
 fused CUDA. FSDP / DeepSpeed are experimental.
 
-**Where it helps:** LM / ViT / CNN from scratch — FairBench wins or ties AdamW.
-**Where it doesn't:** diffusion is a tie; if wall-clock is tight, budget
-~1.2–1.8× AdamW step time until the fused H100 numbers land (try
-`psilogic[cuda]`). For a plain AdamW twin, just use AdamW.
+**Where it helps:** from-scratch LM and ResNet — ties AdamW, beats Adam.
+**Where it doesn't:** the June ViT win did not hold on the Sep 2026 H100 re-run
+(Lion ahead). Diffusion was a tie in the paper run; that arena did not finish
+in the fused re-run. With `psilogic[cuda]` on H100, FairBench wall time is
+1.02–1.10× AdamW. For a plain AdamW twin, just use AdamW.
 
 ## How it works
 
@@ -102,16 +103,24 @@ Early noisy grads → chaos near 1. Converged → near 0. Full writeup:
 
 ## Benchmarks
 
-FairBench CSVs:
+Two H100 snapshots. The June table is what the paper cites. The September
+table is the fused re-run (`psilogic[cuda]`, Triton on).
+
+Paper CSVs (Jun 2026, pre-fusion):
 [`aggregate.csv`](benchmark/results/full/aggregate.csv),
 [`significance.csv`](benchmark/results/full/significance.csv),
-[`config.json`](benchmark/results/full/config.json),
-[`benchmark/logs.txt`](benchmark/logs.txt).
+[`config.json`](benchmark/results/full/config.json).
+Fused re-run (24 Sep 2026):
+[`aggregate.csv`](benchmark/results/fused_h100/aggregate.csv),
+[`significance.csv`](benchmark/results/fused_h100/significance.csv),
+[`PROOF.md`](benchmark/results/fused_h100/PROOF.md).
 Pre-FairBench archive: [`OLD_RESULTS.md`](OLD_RESULTS.md).
 
-Protocol (Jun 2026, H100 80GB, 3 seeds): stage-1 LR sweep (500 steps, 7 LRs),
-stage-2 2000 steps, identical init per seed, bf16 AMP, `grad_clip=1.0`, Welch
-*t*-test.
+Shared protocol: stage-1 LR sweep (500 steps, 7 LRs), stage-2 2000 steps,
+3 seeds, identical init per seed, bf16 AMP, `grad_clip=1.0`, Welch *t*-test.
+June stack: PyTorch 2.4.1+cu124. September stack: PyTorch 2.8.0+cu128, CUDA 12.8.
+
+### Quality — paper reference (Jun 2026, pre-fusion)
 
 | Arena | Task | Metric | Adam | AdamW | Lion | ΨLogic | vs best baseline |
 |:------|:-----|:-------|:----:|:-----:|:----:|:------:|:----------------:|
@@ -123,23 +132,41 @@ stage-2 2000 steps, identical init per seed, bf16 AMP, `grad_clip=1.0`, Welch
 
 \*NLP PPL vs AdamW: *p* = 0.049. \*\*ResNet vs Adam: *p* = 0.001; vs AdamW: *p* = 0.44. \*\*\*ViT vs all baselines: *p* < 0.02.
 
-Wins NLP PPL and ViT. Beats Adam / ties AdamW on ResNet. Tie on diffusion.
+### Quality — fused re-run (24 Sep 2026, H100)
 
-### Wall time & VRAM (Jun 2026 H100, pre-fusion)
+Same FairBench recipe, fusion on. LR sweep winners moved (ViT AdamW/ΨLogic
+landed at 3.2e-5, Lion at 1e-5; June had 3.2e-4 / 1e-4). ViT peak VRAM is
+~5.5 GB here vs ~1.2 GB in June, so this is not a bit-exact replay of the
+paper table.
 
-These times are from before the Triton fused path. `psilogic[cuda]` ships fusion
-in v0.5+; FairBench H100 re-run with fusion is still pending. Quality numbers
-above are unchanged.
+| Arena | Metric | AdamW | Lion | ΨLogic | vs AdamW |
+|:------|:-------|------:|-----:|-------:|:---------|
+| NLP | PPL ↓ | 8.20 ± 0.20 | 20.50 ± 1.29 | **8.15 ± 0.16** | −0.6% (*p*=0.44) |
+| ViT | Acc ↑ | 0.283 ± 0.005 | **0.305 ± 0.004** | 0.267 ± 0.007 | −5.4% (*p*=0.007) |
+| ResNet | Acc ↑ | 0.221 ± 0.005 | 0.208 ± 0.005 | 0.221 ± 0.002 | −0.3% (*p*=0.90) |
 
-| Arena | AdamW peak VRAM | ΨLogic peak VRAM | AdamW time | ΨLogic time | ΨLogic / AdamW |
-|:------|:---------------:|:----------------:|:----------:|:-----------:|:--------------:|
-| NLP | ~445 MB | ~458 MB | 45.9 s | 55.2 s | 1.20× |
-| ViT | ~1208 MB | ~1229 MB | 98.5 s | 176.7 s | 1.79× |
-| ResNet | ~777 MB | ~823 MB | 47.6 s | 67.4 s | 1.42× |
-| Diffusion | ~3768 MB | ~3781 MB | 95.2 s | 168.3 s | 1.77× |
+NLP still points the right way, but the gap vs AdamW is not significant.
+ResNet still ties AdamW and beats Adam (*p*=0.003). ViT does not. Diffusion
+did not run: local CelebA was a flat JPEG folder, and `torchvision.datasets.CelebA`
+rejected it for missing annotations.
 
-Target with multi-tensor fusion: ≤1.25× AdamW step time on Ampere+ (A100/H100).
-Profile locally:
+### Wall time (H100, ΨLogic / AdamW)
+
+Target: ≤1.25× AdamW on the FairBench ViT wall clock. September clears it.
+
+| Arena | Jun 2026 pre-fusion | Sep 2026 fused | Sep AdamW | Sep ΨLogic |
+|:------|--------------------:|---------------:|----------:|-----------:|
+| NLP | 1.20× | **1.10×** | 20.2 s | 22.2 s |
+| ViT | 1.79× | **1.02×** | 114.4 s | 117.2 s |
+| ResNet | 1.42× | **1.04×** | 35.9 s | 37.2 s |
+| Diffusion | 1.77× | — | — | — |
+
+Peak VRAM on the fused run stays within ~1% of AdamW (NLP ~459 MB, ViT ~5.5 GB,
+ResNet ~858 MB).
+
+`scripts/profile_optimizer.py` on the same H100, TinyViTLike ~202k params, is
+launch-bound and is not the FairBench claim: fused median step 1.37 ms vs
+AdamW 0.60 ms (2.27×). Profile locally:
 
 ```bash
 python scripts/profile_optimizer.py
@@ -225,7 +252,8 @@ trainer = L.Trainer(callbacks=[ChaosMonitorCallback(log_every_n_steps=100)])
 `configure_psilogic` returns an optimizer, not a Trainer. Examples:
 [`examples/`](examples/), [`examples/README.md`](examples/README.md).
 
-Citation-grade FairBench output: [`benchmark/results/full/`](benchmark/results/full/).
+Paper FairBench output: [`benchmark/results/full/`](benchmark/results/full/).
+Fused H100 re-run: [`benchmark/results/fused_h100/`](benchmark/results/fused_h100/).
 Root `results/` and `benchmark/results/local_full/` are local scratch.
 `./run_fairbench.sh` is a longer local recipe (5 seeds / 5000 steps / fp16),
 not the paper protocol.
@@ -257,8 +285,9 @@ Details: [`benchmark/README.md`](benchmark/README.md).
   defaults = no AGC / no grad centralization.
 - Warmup is often less critical (early damping is already strong), but schedulers
   still work.
-- Slower than AdamW because of chaos state. Jun 2026 FairBench is pre-fusion —
-  use `psilogic[cuda]`. Ampere+ target: ≤1.25× AdamW step time.
+- FairBench wall time with `psilogic[cuda]` on H100 (24 Sep 2026) is 1.02–1.10×
+  AdamW. The June 1.2–1.8× figures are the pre-fusion run. A tiny-model
+  microbench can still look like ~2×; that is not the FairBench claim.
 - Disable fusion: `PsiLogic(..., use_fused_cuda=False)`.
 - v0.6 breaking: bare constructor no longer enables AGC / grad centralization.
   Use helpers or kwargs. See [CHANGELOG.md](CHANGELOG.md).
