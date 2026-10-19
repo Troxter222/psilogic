@@ -1,0 +1,80 @@
+{
+  "source_sha256": {
+    "PAPER.md": "1f2c4a0125e70e791bbca2ffce85b7d9a346c0f99454b9e88103ec3301cee673",
+    "arxiv/paper.tex": "ab000ef2f6a8be729b9fe5222f7acf29fd96d6cda0ced1b441264b22839e7465",
+    "output/pdf/paper.pdf": "a97f1788a1f5719923636efc3114418a1b89ed3d7dcae967fbb0d5e890e59612",
+    "research/convergence/manuscript.tex": "f27150dc149c7d3038bb13bf3ab1bb4f8953e887375d42863161a2e4310669c9",
+    "research/convergence/manuscript.pdf": "9c6e7485d0175ef36916a288bce8005b2f67c95de0131a9d96ac31624fb70750",
+    "research/convergence/references.bib": "32c985e42523ba00b24f9e4b452ad4fb48c0c10af3b2e86742ea5dedb8038235"
+  },
+  "structure": "description and algorithm; full convergence proofs; protocol and benchmarks; discussion and conclusion; empirical appendices; unified bibliography",
+  "mathematical_environment_blocks_preserved": {
+    "theorem": 2,
+    "lemma": 4,
+    "proposition": 8,
+    "corollary": 3,
+    "assumption": 2,
+    "definition": 1,
+    "proof": 17
+  },
+  "empirical_tables_preserved": 13,
+  "empirical_figures_preserved": 3,
+  "empirical_table_blocks_byte_identical": true,
+  "editorial_changes": [
+    "One title, author block, and abstract; theory abstract integrated into main abstract",
+    "Complete theory inserted after algorithm and before evidence/protocol",
+    "Mathematical notation bridge added; all theorem and proof blocks preserved exactly",
+    "Contradictory no-convergence-proof sentences updated with explicit theorem scope",
+    "Shared BibTeX bibliography and linked citations; empirical appendices numbered automatically",
+    "Build paths and reproduction instructions updated for unified output"
+  ],
+  "commands": [
+    {
+      "command": [
+        "pdflatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-output-directory=build",
+        "paper.tex"
+      ],
+      "exit_code": 0,
+      "log": "build/pass_1.log"
+    },
+    {
+      "command": [
+        "bibtex",
+        "build/paper"
+      ],
+      "exit_code": 0,
+      "log": "build/pass_2.log"
+    },
+    {
+      "command": [
+        "pdflatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-output-directory=build",
+        "paper.tex"
+      ],
+      "exit_code": 0,
+      "log": "build/pass_3.log"
+    },
+    {
+      "command": [
+        "pdflatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-output-directory=build",
+        "paper.tex"
+      ],
+      "exit_code": 0,
+      "log": "build/pass_4.log"
+    }
+  ],
+  "status": "pass",
+  "issues": [],
+  "input_sources_unchanged": true,
+  "tex_sha256": "761cdfad0d5fbc9ef00b4dab963aceadb040f3b25d6c11a25431b18fcd539796",
+  "pdf_sha256": "962a3ea7ae1b6774ff964d08a9c1978cb808ae84d07c2cdd6f42dcfa2735c814",
+  "output": "output/pdf/paper_unified.pdf"
+}

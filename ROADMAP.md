@@ -1,6 +1,6 @@
 # ΨLogic roadmap
 
-Updated 2026-09-06. Current release: v0.6.0. Target for a stable v1.0: Q4 2027.
+Updated 2026-10-19. Current release: v0.6.0. Target for a stable v1.0: Q4 2027.
 
 `[ ]` todo · `[~]` in progress · `[x]` done. A **gate** blocks the next phase.
 
@@ -9,9 +9,9 @@ Updated 2026-09-06. Current release: v0.6.0. Target for a stable v1.0: Q4 2027.
 | Gate | Status | Evidence |
 |:-----|:-------|:---------|
 | **0** | passed | CI green, modular package, PyPI v0.4 |
-| **1A** | passed | FairBench ViT 0.244 vs Lion 0.213 ([`aggregate.csv`](benchmark/results/full/aggregate.csv)) |
-| **1B** | passed | FairBench NLP PPL 7.79 vs AdamW 8.17 |
-| **1C** | in progress | Triton fusion shipped (v0.5); H100 FairBench fused re-run pending |
+| **1A** | passed on June snapshot | FairBench ViT 0.244 vs Lion 0.213; September reverses that ordering |
+| **1B** | passed on June snapshot | NLP PPL 7.79 vs AdamW 8.17; September difference is not significant |
+| **1C** | partial results available | September H100 ViT wall-time ratio 1.02×; diffusion incomplete and microbench ratio 2.27× |
 | **2** | open | ImageNet R50 + GPT-2 medium |
 | **3** | open | ≤15% A100 overhead + published ablations |
 | **4** | open | arXiv live, public W&B, HF docs |
@@ -20,14 +20,16 @@ Updated 2026-09-06. Current release: v0.6.0. Target for a stable v1.0: Q4 2027.
 Gate 1A note: early tables targeted CIFAR Top-1 ≥ 0.48 under a different recipe. The passed gate is FairBench ViT (ViT-Tiny / CIFAR-100, 2000 steps, per-optimizer LR sweep). Absolute accuracy is lower; the comparison is fairer. Don't mix the two targets.
 
 ```
-Sep 2026           Gate 1C — fused FairBench re-run, refresh overhead numbers
+Sep 2026           Gate 1C — partial fused FairBench results saved
 Oct 2026 – Mar 27  Gate 2  — ImageNet-1k (CV-1) + GPT-2 medium (NLP-2)
 Apr–Jun 2027       Phase 3 — ablations, Muon hybrid explore
-Jul–Sep 2027       Phase 4 — arXiv submit (paper.tex SoT), HF docs
+Jul–Sep 2027       Phase 4 — arXiv revision (PAPER.md source), HF docs
 Q4 2027            Gate 5  — v1.0, ≥5/7 arenas, 1B flagship
 ```
 
-Now: Gate 1C — FairBench H100 re-run with `psilogic[cuda]`; refresh wall-time tables in README / PAPER / this file.
+Now: review the partial September H100 results, resolve the missing diffusion
+run, and retain the distinction between FairBench wall time and optimizer-only
+step time. Tables are in [README.md](README.md) and [PAPER.md](PAPER.md).
 
 Next: ImageNet ResNet-50 + GPT-2 medium budgets; learning-curve figures; W&B tagging.
 
@@ -35,7 +37,8 @@ Later: ablation suite, arXiv submit, ecosystem PRs, v1.0 API freeze, 1B flagship
 
 ## Results (v0.6.0)
 
-Quality from FairBench, Jun 2026, H100. Fusion doesn't change these.
+Historical quality from FairBench, June 2026, H100. The September snapshot uses
+a different software stack and selected rates; it is a separate measurement.
 
 | Arena | Task | AdamW | Lion | ΨLogic | Notes |
 |-------|------|-------|------|--------|-------|
@@ -45,16 +48,25 @@ Quality from FairBench, Jun 2026, H100. Fusion doesn't change these.
 | Diffusion | DDPM / CelebA | **0.0199** | 0.0218 | 0.0201 | *p*=0.49 (tie AdamW) |
 | Legacy | [OLD_RESULTS.md](OLD_RESULTS.md) | — | — | — | pre-FairBench only |
 
-Wall time, ΨLogic / AdamW. Scorecard numbers are pre-fusion.
+September quality: NLP PPL 8.15 vs AdamW 8.20 (*p*=0.44); ViT accuracy
+0.267 vs AdamW 0.283 and Lion 0.305; ResNet accuracy 0.221 for both PsiLogic
+and AdamW (*p*=0.90). Diffusion did not complete. Saved measurements:
+[`fused_h100/`](benchmark/results/fused_h100/).
 
-| Arena | Pre-fusion H100 (Jun 2026) | Target (fused) | Status |
-|-------|----------------------------|----------------|--------|
-| NLP | 1.20× | ≤ 1.25× | `[ ]` re-run pending |
-| ViT | **1.79×** | **≤ 1.25×** | `[~]` local TinyViTLike **1.96×** on GTX 1650 (Turing); not the gate hardware |
-| ResNet | 1.42× | ≤ 1.25× | `[ ]` re-run pending |
-| Diffusion | 1.77× | ≤ 1.25× | `[ ]` re-run pending |
+Wall time, ΨLogic / AdamW. These are training-run wall times, not optimizer-only
+step measurements.
 
-Close Gate 1C on Ampere+ / H100 with `psilogic[cuda]`, then start Gate 2. v0.6 turned AGC/GC off on bare `PsiLogic` after NLP follow-ups (they hurt TinyStories GPT-scratch vs AdamW).
+| Arena | Pre-fusion H100 (Jun 2026) | Fused H100 (Sep 2026) | Target |
+|-------|----------------------------|-----------------------|--------|
+| NLP | 1.20× | 1.10× | ≤ 1.25× |
+| ViT | 1.79× | 1.02× | ≤ 1.25× |
+| ResNet | 1.42× | 1.04× | ≤ 1.25× |
+| Diffusion | 1.77× | incomplete | ≤ 1.25× |
+
+The ViT wall-time result meets the stated ratio target. The H100 TinyViTLike
+optimizer microbench is 2.27× AdamW, so it does not meet the optimizer-step
+target. The GTX 1650 result (1.96×) remains a separate hardware diagnostic.
+v0.6 turned AGC/GC off on bare `PsiLogic` after the NLP follow-ups.
 
 ## What v1 means
 
@@ -98,15 +110,17 @@ Package split + CI.
 
 ## Phase 1C — performance (v0.5.x) · in progress
 
-Target: **≤1.25× AdamW** step time on ViT-like models with `use_fused_cuda=True` on Ampere+ (A100/H100). Wall times above are pre-fusion.
+Target: **≤1.25× AdamW** step time on ViT-like models with
+`use_fused_cuda=True` on Ampere+ (A100/H100). The September FairBench ViT
+wall-time target is met; the optimizer-only microbench target remains open.
 
 | ID | Deliverable | Status |
 |----|-------------|--------|
 | P1 | Triton fused step (`psilogic/_cuda/`) + multi-tensor kernel | `[x]` 0.5.x |
 | P2 | `tests/test_step_overhead.py` + `scripts/profile_optimizer.py` | `[x]` |
 | P3 | `tests/test_numerical_parity.py` — scalar / foreach / fused | `[x]` 0.5.0 |
-| P4 | Re-run FairBench with `psilogic[cuda]` on H100 | `[ ]` pending |
-| P5 | Update README + overhead tables | `[~]` docs say pending; numbers not replaced |
+| P4 | Re-run FairBench with `psilogic[cuda]` on H100 | `[~]` NLP, ViT and ResNet saved; diffusion incomplete |
+| P5 | Update README + overhead tables | `[x]` both snapshots retained with timing scope |
 | P6 | CI: optional self-hosted GPU job for fused overhead | `[ ]` |
 
 ```bash
@@ -177,13 +191,13 @@ Gate 3: step overhead ≤ 15% vs AdamW on A100, ablation suite published, auto-c
 
 ## Phase 4 — paper and docs (v0.95) · Jul–Sep 2027
 
-- [x] LaTeX — [arxiv/paper.tex](arxiv/paper.tex) (source of truth for PDF)
+- [x] LaTeX — [arxiv/paper.tex](arxiv/paper.tex), generated from [PAPER.md](PAPER.md)
 - [x] PDF build — [scripts/build_arxiv_pdf.py](scripts/build_arxiv_pdf.py)
-- [ ] Sync tex + [PAPER.md](PAPER.md) with fused-CUDA overhead + v0.6 defaults
+- [x] Sync generated LaTeX and [PAPER.md](PAPER.md) with both H100 snapshots and v0.6 defaults
 - [ ] Submit / update arXiv (cs.LG)
 - [ ] Update Zenodo DOI on each major scientific release
 - [ ] Reproduce one published AdamW baseline curve; Lion ViT match/beat writeup
-- [ ] Convergence sketch with stated assumptions
+- [x] Restricted-configuration convergence proofs and explicit assumptions in [research/convergence/](research/convergence/)
 
 | Platform | Status |
 |----------|--------|

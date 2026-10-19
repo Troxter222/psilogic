@@ -7,23 +7,18 @@ from typing import Any
 
 import torch
 
-# Auto-warmup policy: when ``chaos_warmup == -1`` the warmup horizon scales
-# with the training length so chaos never fires into raw from-scratch noise.
+# Automatic warmup scales with the training horizon when it is known.
 _AUTO_WARMUP_FLOOR = 500
 _AUTO_WARMUP_DIVISOR = 20
 _AUTO_WARMUP_FALLBACK = 200  # used when the training horizon is unknown
 
-# Auto-gamma policy: when the slow EMA falls below this threshold the run is
-# considered converged and gamma is reduced proportionally (with a floor).
+# Reduce gamma below this slow-EMA threshold, subject to a minimum multiplier.
 _AUTO_GAMMA_THRESHOLD = 0.1
 _AUTO_GAMMA_FLOOR = 0.1
 
-# Soft-gate policy: the fast/slow ratio becomes a continuous ``excess`` in
-# ``(0, 1)`` instead of a hard ``fast > tau_scale * slow`` mask. ``tau_scale``
-# keeps its meaning — "how far above 1.0 the ratio must climb before the gate
-# is wide open" — because the sigmoid saturates (~0.98) at ``ratio ==
-# tau_scale``. The hard mask left the gate shut for entire runs, which made
-# gamma / max_cancel / p_ext bit-for-bit inert.
+# Use a sigmoid rather than a hard threshold on the fast/slow ratio.
+# At ratio == tau_scale the sigmoid is about 0.98 when tau_scale >= 1.25.
+# The previous hard gate left damping inactive throughout some runs.
 _EXCESS_SHARPNESS = 4.0
 _MIN_TAU_MARGIN = 0.25
 
@@ -66,11 +61,10 @@ def auto_gamma(
     step: int,
     gamma_base: float,
 ) -> float:
-    """Convergence-aware gamma reduction.
+    """Reduce gamma when the normalized slow EMA is below ``0.1``.
 
-    When the scale-normalized slow EMA drops below ``0.1`` the network is in
-    a quiet, converged regime where active cancellation only hurts — gamma is
-    reduced proportionally, floored at 10% of its base value.
+    Scale gamma proportionally, with a floor at 10% of its base value.
+    The EMA threshold is a heuristic, not a convergence test.
 
     Note: calling ``float()`` on a CUDA tensor synchronizes the stream, so
     this helper is only invoked when ``gamma_auto=True`` is explicitly set.
@@ -134,11 +128,9 @@ def grad_momentum_disagreement(
 ) -> torch.Tensor:
     """Return ``0.5 * (1 - cos(grad, momentum))`` as a 1-element fp32 tensor.
 
-    ``0`` means the fresh gradient points the same way as accumulated
-    momentum (the optimizer is making consistent progress) and ``1`` means it
-    fully opposes it (the step is oscillating across a valley). ``momentum``
-    must still hold the *pre-update* value, and ``grad_norm`` the norm of the
-    same post-AGC/post-centralize gradient that feeds the chaos EMAs.
+    Values near ``0`` indicate alignment; values near ``1`` indicate opposing
+    directions. ``momentum`` must hold the pre-update value. ``grad_norm`` is
+    the norm of the post-AGC/post-centralize gradient that feeds the chaos EMAs.
 
     Returns ``0`` on the first step, where momentum is still all zeros and
     the cosine carries no information.
@@ -163,16 +155,16 @@ def soft_chaos_signal(
 ) -> torch.Tensor:
     """Continuous chaos level in ``[0, 1]``.
 
-    Two independent symptoms of "the model is confused" are averaged:
+    Average two gradient statistics:
 
-    * ``excess`` — the fast EMA of the gradient norm running hot relative to
-      the slow baseline, squashed through a sigmoid whose sharpness is set by
-      ``tau_scale`` (or by ``chaos_tau`` when ``adaptive_tau=False``).
-    * ``disagree`` — the gradient fighting its own momentum, from
+    * ``excess``: a sigmoid of the fast/slow ratio, with sharpness set by
+      ``tau_scale``. With ``adaptive_tau=False``, use the slow EMA relative
+      to ``chaos_tau`` instead.
+    * ``disagree``: gradient-momentum disagreement, from
       :func:`grad_momentum_disagreement`.
 
-    ``tanh(slow)`` scales the whole thing, so the signal vanishes on its own
-    once gradients go quiet at convergence.
+    Multiplication by ``tanh(slow)`` reduces the signal as the slow EMA tends
+    to zero.
 
     Every operation is elementwise, so this serves the per-parameter path
     (1-element tensors) and the batched path (stacked ``(n,)`` vectors)
@@ -197,9 +189,8 @@ def trust_from_soft_chaos(
     """Return the ``trust`` factor the Adam/Lion update is scaled by.
 
     ``trust = 1 - min(soft_chaos * gamma * p_ext * warmup_gain, max_cancel)``,
-    so ``gamma`` reads as "the largest fraction of a step we are willing to
-    withhold when the model is maximally confused". ``gamma_eff`` may be a
-    Python float (group-uniform) or a per-parameter ``(n,)`` tensor from
+    with the cancellation cap limited internally to ``0.99``. ``gamma_eff``
+    may be a Python float (group-uniform) or a per-parameter ``(n,)`` tensor from
     :func:`auto_gamma_batched`.
     """
     cap = min(max_cancel, _MAX_DAMPING)
@@ -221,11 +212,8 @@ def update_gradient_norm_ema_batched(
     (checked by the caller). ``gn_scaled`` is the stacked, already
     ``||grad||/sqrt(numel)``-normalized per-parameter gradient norm.
 
-    Every operation here is elementwise along the parameter axis — there is
-    no reduction across parameters — so this is bit-for-bit identical to
-    calling :func:`update_gradient_norm_ema` once per parameter in a loop;
-    it is purely a batching of the same arithmetic into fewer, larger kernel
-    launches instead of many size-1 ones.
+    Operations are elementwise along the parameter axis, batching the scalar
+    recurrence without reducing across parameters.
     """
     if step == 1:
         gn_avg_vec.copy_(gn_scaled)

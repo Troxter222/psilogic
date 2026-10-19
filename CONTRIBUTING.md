@@ -22,6 +22,23 @@ Integrations, CUDA extras, and benchmark deps:
 pip install -e ".[all]"
 ```
 
+### Using uv
+
+`pyproject.toml` defines the package requirements. `uv.lock` is local and is
+excluded from Git; the existing local copy may describe an older set of extras.
+Resolve it from the current metadata before using it:
+
+```bash
+uv lock
+uv sync --extra dev
+uv run --locked pytest tests/ -v
+```
+
+Dependency resolution needs access to the package index or a populated cache.
+This creates a development environment; it does not reproduce the software
+stack used for the archived H100 runs. Their saved configs describe those runs.
+Keep dependency updates separate from edits to optimizer documentation.
+
 ## Sending a change
 
 Branch from `main`. I use `fix/…`, `feat/…`, `docs/…`, `bench/…`.

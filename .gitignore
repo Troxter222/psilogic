@@ -21,13 +21,19 @@ htmlcov/
 # FairBench dataset cache (~2 GB downloads)
 benchmark/data/
 
-# Scratch / local FairBench runs (citation-grade snapshot is results/full/ only)
+# Local FairBench runs; the paper snapshots are retained below.
 results/
 benchmark/results/local_full/
 benchmark/results/plots/
-# Keep committed reference CSVs/plots under full/; ignore other sibling dumps
+# Retain the two source snapshots used by the paper; ignore sibling dumps.
+!benchmark/results/
+benchmark/results/*
 benchmark/results/*.csv
 !benchmark/results/full/
+!benchmark/results/fused_h100/
+
+# Local manuscript backups and rendered review pages
+/tmp/
 
 # LaTeX / arXiv build artifacts
 .tectonic-cache/
@@ -55,5 +61,15 @@ Thumbs.db
 *.prof
 *.nsys-rep
 
-# Optional local lock (document uv sync in CONTRIBUTING before committing)
-# uv.lock
+# Local dependency resolution; pyproject.toml defines the published requirements.
+uv.lock
+
+# PDF build intermediates; retain the two final articles.
+/output/*
+!/output/pdf/
+/output/pdf/*
+!/output/pdf/paper.pdf
+!/output/pdf/paper_unified.pdf
+/research/convergence/verification/latex/*
+!/research/convergence/verification/latex/build_results.json
+/research/convergence/verification/latex/initial_passes/

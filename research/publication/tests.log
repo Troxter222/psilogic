@@ -1,0 +1,172 @@
+..s.......................F.s.s.........sss............................. [ 41%]
+..........ssssssssssssssss.............................................s [ 82%]
+..........sss..s...............                                          [100%]
+=================================== FAILURES ===================================
+___________________________________ test_ddp ___________________________________
+tests/test_ddp.py:47: in test_ddp
+    mp.spawn(_demo_basic, args=(world_size,), nprocs=world_size, join=True)
+.venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:340: in spawn
+    return start_processes(fn, args, nprocs, join, daemon, start_method="spawn")
+.venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:296: in start_processes
+    while not context.join():
+.venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:211: in join
+    raise ProcessRaisedException(msg, error_index, failed_process.pid)
+E   torch.multiprocessing.spawn.ProcessRaisedException: 
+E   
+E   -- Process 0 terminated with the following error:
+E   Traceback (most recent call last):
+E     File "/mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py", line 87, in _wrap
+E       fn(i, *args)
+E     File "/mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/tests/test_ddp.py", line 26, in _demo_basic
+E       _setup(rank, world_size)
+E     File "/mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/tests/test_ddp.py", line 18, in _setup
+E       dist.init_process_group("gloo", rank=rank, world_size=world_size)
+E     File "/mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/distributed/c10d_logger.py", line 83, in wrapper
+E       return func(*args, **kwargs)
+E     File "/mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/distributed/c10d_logger.py", line 97, in wrapper
+E       func_return = func(*args, **kwargs)
+E     File "/mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/distributed/distributed_c10d.py", line 1892, in init_process_group
+E       store, rank, world_size = next(rendezvous_iterator)
+E     File "/mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/distributed/rendezvous.py", line 280, in _env_rendezvous_handler
+E       store = _create_c10d_store(
+E     File "/mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/distributed/rendezvous.py", line 199, in _create_c10d_store
+E       return TCPStore(
+E   torch.distributed.DistNetworkError: The server socket has failed to bind. port: 12355, useIpv6: 0, code: -1, name: EPERM, message: operation not permitted
+----------------------------- Captured stderr call -----------------------------
+[W1019 16:52:58.570322221 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to [localhost]:12355 (errno: 1 - Operation not permitted).
+[W1019 16:52:58.570362770 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to [localhost]:12355 (errno: 1 - Operation not permitted).
+[W1019 16:52:58.570389105 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to [localhost]:12355 (errno: 1 - Operation not permitted).
+[W1019 16:52:58.570445744 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to localhost:12355 (errno: 1 - Operation not permitted).
+[W1019 16:52:58.570470774 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to localhost:12355 (errno: 1 - Operation not permitted).
+[E1019 16:52:58.570474265 socket.cpp:818] [c10d] The client socket has failed to connect to any network address of (localhost, 12355).
+[W1019 16:52:58.679083509 TCPStore.cpp:340] [c10d] TCP client failed to connect/validate to host localhost:12355 - retrying (try=0, timeout=1800000ms, delay=313ms): The client socket has failed to connect to any network address of (localhost, 12355). The client socket cannot be initialized to connect to localhost:12355 (errno: 1 - Operation not permitted). The client socket cannot be initialized to connect to localhost:12355 (errno: 1 - Operation not permitted).
+Exception raised from run at /__w/pytorch/pytorch/torch/csrc/distributed/c10d/socket.cpp:820 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0x9d (0x7f3232963bfd in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libc10.so)
+frame #1: c10::DistError::DistError(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0x72 (0x7f3232964bd2 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libc10.so)
+frame #2: c10::DistNetworkError::DistNetworkError(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0x72 (0x7f3232965092 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libc10.so)
+frame #3: <unknown function> + 0x15a20f1 (0x7f31957a20f1 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_cpu.so)
+frame #4: <unknown function> + 0x6749ef2 (0x7f319a949ef2 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_cpu.so)
+frame #5: <unknown function> + 0x66a1d73 (0x7f319a8a1d73 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_cpu.so)
+frame #6: c10d::TCPStore::TCPStore(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, c10d::TCPStoreOptions const&) + 0x41d (0x7f319a8a9c3d in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_cpu.so)
+frame #7: <unknown function> + 0xeeb236 (0x7f31aa0eb236 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_python.so)
+frame #8: <unknown function> + 0x3f2815 (0x7f31a95f2815 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_python.so)
+<omitting python frames>
+frame #14: <unknown function> + 0x3f07bb (0x7f31a95f07bb in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_python.so)
+frame #53: <unknown function> + 0x27781 (0x7f3233827781 in /usr/lib/libc.so.6)
+frame #54: __libc_start_main + 0x89 (0x7f32338278b9 in /usr/lib/libc.so.6)
+frame #55: _start + 0x25 (0x562fededc055 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/bin/python)
+
+[W1019 16:52:59.995376535 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to [localhost]:12355 (errno: 1 - Operation not permitted).
+[W1019 16:52:59.995413399 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to [localhost]:12355 (errno: 1 - Operation not permitted).
+[W1019 16:52:59.995438957 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to [localhost]:12355 (errno: 1 - Operation not permitted).
+[W1019 16:52:59.995489750 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to localhost:12355 (errno: 1 - Operation not permitted).
+[W1019 16:52:59.995514091 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to localhost:12355 (errno: 1 - Operation not permitted).
+[E1019 16:52:59.995517385 socket.cpp:818] [c10d] The client socket has failed to connect to any network address of (localhost, 12355).
+[W1019 16:52:59.995564433 TCPStore.cpp:340] [c10d] TCP client failed to connect/validate to host localhost:12355 - retrying (try=1, timeout=1800000ms, delay=984ms): The client socket has failed to connect to any network address of (localhost, 12355). The client socket cannot be initialized to connect to localhost:12355 (errno: 1 - Operation not permitted). The client socket cannot be initialized to connect to localhost:12355 (errno: 1 - Operation not permitted).
+Exception raised from run at /__w/pytorch/pytorch/torch/csrc/distributed/c10d/socket.cpp:820 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0x9d (0x7f3232963bfd in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libc10.so)
+frame #1: c10::DistError::DistError(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0x72 (0x7f3232964bd2 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libc10.so)
+frame #2: c10::DistNetworkError::DistNetworkError(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0x72 (0x7f3232965092 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libc10.so)
+frame #3: <unknown function> + 0x15a20f1 (0x7f31957a20f1 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_cpu.so)
+frame #4: <unknown function> + 0x6749ef2 (0x7f319a949ef2 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_cpu.so)
+frame #5: <unknown function> + 0x66a1d73 (0x7f319a8a1d73 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_cpu.so)
+frame #6: c10d::TCPStore::TCPStore(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, c10d::TCPStoreOptions const&) + 0x41d (0x7f319a8a9c3d in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_cpu.so)
+frame #7: <unknown function> + 0xeeb236 (0x7f31aa0eb236 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_python.so)
+frame #8: <unknown function> + 0x3f2815 (0x7f31a95f2815 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_python.so)
+<omitting python frames>
+frame #14: <unknown function> + 0x3f07bb (0x7f31a95f07bb in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_python.so)
+frame #53: <unknown function> + 0x27781 (0x7f3233827781 in /usr/lib/libc.so.6)
+frame #54: __libc_start_main + 0x89 (0x7f32338278b9 in /usr/lib/libc.so.6)
+frame #55: _start + 0x25 (0x562fededc055 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/bin/python)
+
+[W1019 16:53:00.982849113 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to [localhost]:12355 (errno: 1 - Operation not permitted).
+[W1019 16:53:00.982889347 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to [localhost]:12355 (errno: 1 - Operation not permitted).
+[W1019 16:53:00.982937778 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to [localhost]:12355 (errno: 1 - Operation not permitted).
+[W1019 16:53:00.982999496 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to localhost:12355 (errno: 1 - Operation not permitted).
+[W1019 16:53:00.983037489 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to localhost:12355 (errno: 1 - Operation not permitted).
+[E1019 16:53:00.983041373 socket.cpp:818] [c10d] The client socket has failed to connect to any network address of (localhost, 12355).
+[W1019 16:53:00.983093890 TCPStore.cpp:340] [c10d] TCP client failed to connect/validate to host localhost:12355 - retrying (try=2, timeout=1800000ms, delay=905ms): The client socket has failed to connect to any network address of (localhost, 12355). The client socket cannot be initialized to connect to localhost:12355 (errno: 1 - Operation not permitted). The client socket cannot be initialized to connect to localhost:12355 (errno: 1 - Operation not permitted).
+Exception raised from run at /__w/pytorch/pytorch/torch/csrc/distributed/c10d/socket.cpp:820 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0x9d (0x7f3232963bfd in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libc10.so)
+frame #1: c10::DistError::DistError(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0x72 (0x7f3232964bd2 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libc10.so)
+frame #2: c10::DistNetworkError::DistNetworkError(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0x72 (0x7f3232965092 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libc10.so)
+frame #3: <unknown function> + 0x15a20f1 (0x7f31957a20f1 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_cpu.so)
+frame #4: <unknown function> + 0x6749ef2 (0x7f319a949ef2 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_cpu.so)
+frame #5: <unknown function> + 0x66a1d73 (0x7f319a8a1d73 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_cpu.so)
+frame #6: c10d::TCPStore::TCPStore(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, c10d::TCPStoreOptions const&) + 0x41d (0x7f319a8a9c3d in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_cpu.so)
+frame #7: <unknown function> + 0xeeb236 (0x7f31aa0eb236 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_python.so)
+frame #8: <unknown function> + 0x3f2815 (0x7f31a95f2815 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_python.so)
+<omitting python frames>
+frame #14: <unknown function> + 0x3f07bb (0x7f31a95f07bb in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_python.so)
+frame #53: <unknown function> + 0x27781 (0x7f3233827781 in /usr/lib/libc.so.6)
+frame #54: __libc_start_main + 0x89 (0x7f32338278b9 in /usr/lib/libc.so.6)
+frame #55: _start + 0x25 (0x562fededc055 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/bin/python)
+
+[W1019 16:53:01.891297200 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to [localhost]:12355 (errno: 1 - Operation not permitted).
+[W1019 16:53:01.891334585 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to [localhost]:12355 (errno: 1 - Operation not permitted).
+[W1019 16:53:01.891359374 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to [localhost]:12355 (errno: 1 - Operation not permitted).
+[W1019 16:53:01.891409557 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to localhost:12355 (errno: 1 - Operation not permitted).
+[W1019 16:53:01.891433440 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to localhost:12355 (errno: 1 - Operation not permitted).
+[E1019 16:53:01.891436755 socket.cpp:818] [c10d] The client socket has failed to connect to any network address of (localhost, 12355).
+[W1019 16:53:01.891482718 TCPStore.cpp:340] [c10d] TCP client failed to connect/validate to host localhost:12355 - retrying (try=3, timeout=1800000ms, delay=1093ms): The client socket has failed to connect to any network address of (localhost, 12355). The client socket cannot be initialized to connect to localhost:12355 (errno: 1 - Operation not permitted). The client socket cannot be initialized to connect to localhost:12355 (errno: 1 - Operation not permitted).
+Exception raised from run at /__w/pytorch/pytorch/torch/csrc/distributed/c10d/socket.cpp:820 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0x9d (0x7f3232963bfd in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libc10.so)
+frame #1: c10::DistError::DistError(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0x72 (0x7f3232964bd2 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libc10.so)
+frame #2: c10::DistNetworkError::DistNetworkError(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0x72 (0x7f3232965092 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libc10.so)
+frame #3: <unknown function> + 0x15a20f1 (0x7f31957a20f1 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_cpu.so)
+frame #4: <unknown function> + 0x6749ef2 (0x7f319a949ef2 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_cpu.so)
+frame #5: <unknown function> + 0x66a1d73 (0x7f319a8a1d73 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_cpu.so)
+frame #6: c10d::TCPStore::TCPStore(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, c10d::TCPStoreOptions const&) + 0x41d (0x7f319a8a9c3d in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_cpu.so)
+frame #7: <unknown function> + 0xeeb236 (0x7f31aa0eb236 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_python.so)
+frame #8: <unknown function> + 0x3f2815 (0x7f31a95f2815 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_python.so)
+<omitting python frames>
+frame #14: <unknown function> + 0x3f07bb (0x7f31a95f07bb in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_python.so)
+frame #53: <unknown function> + 0x27781 (0x7f3233827781 in /usr/lib/libc.so.6)
+frame #54: __libc_start_main + 0x89 (0x7f32338278b9 in /usr/lib/libc.so.6)
+frame #55: _start + 0x25 (0x562fededc055 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/bin/python)
+
+[W1019 16:53:02.987692829 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to [localhost]:12355 (errno: 1 - Operation not permitted).
+[W1019 16:53:02.987733466 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to [localhost]:12355 (errno: 1 - Operation not permitted).
+[W1019 16:53:02.987760362 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to [localhost]:12355 (errno: 1 - Operation not permitted).
+[W1019 16:53:02.987814118 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to localhost:12355 (errno: 1 - Operation not permitted).
+[W1019 16:53:02.987840602 socket.cpp:764] [c10d] The client socket cannot be initialized to connect to localhost:12355 (errno: 1 - Operation not permitted).
+[E1019 16:53:02.987844173 socket.cpp:818] [c10d] The client socket has failed to connect to any network address of (localhost, 12355).
+[W1019 16:53:02.987897893 TCPStore.cpp:340] [c10d] TCP client failed to connect/validate to host localhost:12355 - retrying (try=4, timeout=1800000ms, delay=2742ms): The client socket has failed to connect to any network address of (localhost, 12355). The client socket cannot be initialized to connect to localhost:12355 (errno: 1 - Operation not permitted). The client socket cannot be initialized to connect to localhost:12355 (errno: 1 - Operation not permitted).
+Exception raised from run at /__w/pytorch/pytorch/torch/csrc/distributed/c10d/socket.cpp:820 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0x9d (0x7f3232963bfd in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libc10.so)
+frame #1: c10::DistError::DistError(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0x72 (0x7f3232964bd2 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libc10.so)
+frame #2: c10::DistNetworkError::DistNetworkError(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0x72 (0x7f3232965092 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libc10.so)
+frame #3: <unknown function> + 0x15a20f1 (0x7f31957a20f1 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_cpu.so)
+frame #4: <unknown function> + 0x6749ef2 (0x7f319a949ef2 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_cpu.so)
+frame #5: <unknown function> + 0x66a1d73 (0x7f319a8a1d73 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_cpu.so)
+frame #6: c10d::TCPStore::TCPStore(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, c10d::TCPStoreOptions const&) + 0x41d (0x7f319a8a9c3d in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_cpu.so)
+frame #7: <unknown function> + 0xeeb236 (0x7f31aa0eb236 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_python.so)
+frame #8: <unknown function> + 0x3f2815 (0x7f31a95f2815 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_python.so)
+<omitting python frames>
+frame #14: <unknown function> + 0x3f07bb (0x7f31a95f07bb in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/lib/python3.10/site-packages/torch/lib/libtorch_python.so)
+frame #53: <unknown function> + 0x27781 (0x7f3233827781 in /usr/lib/libc.so.6)
+frame #54: __libc_start_main + 0x89 (0x7f32338278b9 in /usr/lib/libc.so.6)
+frame #55: _start + 0x25 (0x562fededc055 in /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/.venv/bin/python)
+
+W1019 16:53:04.319000 2 .venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:165] Terminating process 376 via signal SIGTERM
+------------------------------ Captured log call -------------------------------
+WARNING  torch.multiprocessing.spawn:spawn.py:165 Terminating process 376 via signal SIGTERM
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_deepspeed.py:11: could not import 'deepspeed': No module named 'deepspeed'
+SKIPPED [1] tests/test_amp.py: CUDA not available
+SKIPPED [1] tests/test_ddp_sync_batching.py:59: CUDA not available
+SKIPPED [1] tests/test_ddp_sync_batching.py:151: CUDA not available
+SKIPPED [3] tests/test_fsdp.py: 2+ CUDA devices required
+SKIPPED [2] tests/test_numerical_parity.py:234: CUDA not available
+SKIPPED [2] tests/test_numerical_parity.py:251: Triton fused CUDA path unavailable
+SKIPPED [1] tests/test_numerical_parity.py:283: Triton fused CUDA path unavailable
+SKIPPED [8] tests/test_numerical_parity.py:306: Triton fused CUDA path unavailable
+SKIPPED [1] tests/test_numerical_parity.py:350: Triton fused CUDA path unavailable
+SKIPPED [1] tests/test_numerical_parity.py:369: Triton fused CUDA path unavailable
+SKIPPED [1] tests/test_numerical_parity.py:429: Triton fused CUDA path unavailable
+SKIPPED [1] tests/test_scale_invariance.py: CUDA not available
+SKIPPED [1] tests/test_step_overhead.py:71: CUDA not available
+SKIPPED [1] tests/test_step_overhead.py:92: Fused <=1.25x AdamW target is for Ampere+ (A100/H100); skip on older GPUs
+SKIPPED [1] tests/test_step_overhead.py:126: Fused <=1.25x AdamW target is for Ampere+ (A100/H100); skip on older GPUs
+SKIPPED [1] tests/test_stress_explosion.py: CUDA not available
+FAILED tests/test_ddp.py::test_ddp - torch.multiprocessing.spawn.ProcessRaise...

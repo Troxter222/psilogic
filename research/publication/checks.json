@@ -1,0 +1,89 @@
+{
+  "date": "2026-10-19",
+  "timezone": "Asia/Tashkent",
+  "status": "pass_with_environment_skips",
+  "python": "3.10.19",
+  "torch": "2.13.0+cu130",
+  "ruff_version": "0.15.22",
+  "lint": {
+    "command": ".venv/bin/python -m ruff check psilogic tests benchmark examples",
+    "status": "pass"
+  },
+  "format": {
+    "command": ".venv/bin/python -m ruff format --check psilogic tests benchmark examples scripts research benchmark_nlp_5000_psilogic.py",
+    "status": "pass",
+    "files": 80
+  },
+  "mypy": {
+    "command": ".venv/bin/python -m mypy psilogic",
+    "status": "pass",
+    "files": 14
+  },
+  "tests": {
+    "initial_command": ".venv/bin/python -m pytest tests/ -q --tb=short",
+    "initial_passed": 147,
+    "initial_failed": 1,
+    "initial_skipped": 28,
+    "initial_failure": "tests/test_ddp.py::test_ddp: sandbox prohibits localhost sockets (Operation not permitted)",
+    "retry_command": ".venv/bin/python -m pytest tests/test_ddp.py -v --tb=short -o addopts=''",
+    "retry_environment": "Local sockets permitted; no external network access needed by test",
+    "retry_passed": 1,
+    "combined_passed": 148,
+    "combined_skipped": 28,
+    "unresolved_failures": [],
+    "skip_reasons": "CUDA/Triton or two CUDA devices unavailable; optional DeepSpeed not installed",
+    "logs": [
+      "tests.log",
+      "ddp_retry.log"
+    ]
+  },
+  "code_equivalence": {
+    "status": "pass",
+    "files": 80,
+    "package_files_also_compared_to_git_head": 14
+  },
+  "mathematics": {
+    "theory_environments_preserved": 37,
+    "proof_blocks_preserved": 17,
+    "converted_markdown_fragments_preserved": 370,
+    "note": "37 environments include the 17 proof blocks."
+  },
+  "numerical_checks": {
+    "recurrence_cases": 34,
+    "recurrence_comparisons": 47380,
+    "tracking_sequences": 300,
+    "synthetic_trajectories": 8,
+    "counterexamples": "C1-C7 and backend RMS rounding reproduced"
+  },
+  "lean": {
+    "status": "kernel_checked",
+    "declarations": 10,
+    "full_convergence_formalized": false
+  },
+  "pdfs": {
+    "status": "pass",
+    "pages": [
+      13,
+      16,
+      28
+    ],
+    "review": "pdf_review.json",
+    "compiler_overflows_or_unresolved_references": []
+  },
+  "local_links": {
+    "checked": 59,
+    "missing": [],
+    "external_urls_checked": false
+  },
+  "markdown_table_shape_issues": [],
+  "large_files_over_50_MiB": [],
+  "uv_lock": {
+    "published": false,
+    "reason": "Local lock omits deepspeed extra; offline resolution lacks required package metadata. No dependency constraints changed."
+  },
+  "commit_performed": false,
+  "push_performed": false,
+  "release_performed": false,
+  "historical_snapshot_and_results_preserved": true,
+  "initial_test_collection_items": 175
+}

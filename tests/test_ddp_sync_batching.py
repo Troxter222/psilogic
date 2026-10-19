@@ -1,13 +1,7 @@
-"""Tests for issue #27: batch DDP chaos synchronization into one packed
-collective per parameter group per optimizer step, instead of one
-all-reduce per parameter.
+"""Check that DDP detector synchronization uses one collective per group (#27).
 
-No real process group is needed: ``_maybe_sync_chaos`` is a thin wrapper
-around ``torch.distributed.all_reduce``, so we fake ``torch.distributed``
-just enough to (a) count how many collectives are issued, and (b) verify
-that packing several parameters' chaos state into one buffer and reducing
-it once produces the exact same per-parameter result as reducing each
-parameter individually.
+Mock all_reduce to count collectives and compare packed results with
+per-parameter reductions, without starting a process group.
 """
 
 from __future__ import annotations

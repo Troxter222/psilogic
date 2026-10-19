@@ -24,10 +24,8 @@ import torch
 from torch import Tensor
 from torch.optim.optimizer import Optimizer
 
-# --------------------------------------------------------------------------- #
 # Reference Lion (Chen et al., 2023, "Symbolic Discovery of Optimization
 # Algorithms"). Sign-momentum update with decoupled weight decay.
-# --------------------------------------------------------------------------- #
 
 
 class Lion(Optimizer):

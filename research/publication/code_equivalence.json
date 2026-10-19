@@ -1,0 +1,667 @@
+{
+  "status": "pass",
+  "date": "2026-10-19",
+  "comparison": "Python AST with only module/class/function docstrings removed; line/column attributes omitted. All other string literals, identifiers and expressions retained.",
+  "baseline": "Working tree before publication preparation; optimizer also compared with Git HEAD to cover earlier comment edits.",
+  "git_revision": "b4917163d63d8a5cb2960e29af4b1bccdbf5798d",
+  "files_checked": 80,
+  "files_with_editorial_changes": 23,
+  "package_files_matching_git_head_executable_ast": [
+    "psilogic/__init__.py",
+    "psilogic/_chaos.py",
+    "psilogic/_cuda/__init__.py",
+    "psilogic/_cuda/kernels.py",
+    "psilogic/_cuda/step.py",
+    "psilogic/_version.py",
+    "psilogic/convenience.py",
+    "psilogic/debug.py",
+    "psilogic/integrations/__init__.py",
+    "psilogic/integrations/hf.py",
+    "psilogic/integrations/lightning.py",
+    "psilogic/optimizer.py",
+    "psilogic/param_groups.py",
+    "psilogic/presets.py"
+  ],
+  "files": [
+    {
+      "path": "benchmark_nlp_5000_psilogic.py",
+      "original_source_sha256": "46ce27eed533b5c95918c986fc877bb320e569155b5c56a93e1f2b5458c479e6",
+      "current_source_sha256": "46ce27eed533b5c95918c986fc877bb320e569155b5c56a93e1f2b5458c479e6",
+      "original_executable_ast_sha256": "d09baae79f8f0de6e520aecfa89244432c6b6a48828e1a538d0d5e29fffe7405",
+      "current_executable_ast_sha256": "d09baae79f8f0de6e520aecfa89244432c6b6a48828e1a538d0d5e29fffe7405",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "examples/hf_sst2_finetune.py",
+      "original_source_sha256": "789e5fbca27b7f4d9cfba7fd22c91cf2555d42fd9f03cfafefb7d85063f791ec",
+      "current_source_sha256": "789e5fbca27b7f4d9cfba7fd22c91cf2555d42fd9f03cfafefb7d85063f791ec",
+      "original_executable_ast_sha256": "a209260438b9d31f3c12f652aa6501f13c2f6d81f35210db9bace61c1906c470",
+      "current_executable_ast_sha256": "a209260438b9d31f3c12f652aa6501f13c2f6d81f35210db9bace61c1906c470",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "psilogic/convenience.py",
+      "original_source_sha256": "4f0736a9ad45f6e934235ab0487085289c7197a3b85c698e156c283fdf88d79d",
+      "current_source_sha256": "dc3fb7ffb27de0c090a3df0a739c3295cefd4d76166c7e0ed748cf8384b227e0",
+      "original_executable_ast_sha256": "e1a4caef3f527f2975539009c7293c80f8635962b7d340d539af90b4382e7334",
+      "current_executable_ast_sha256": "e1a4caef3f527f2975539009c7293c80f8635962b7d340d539af90b4382e7334",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "psilogic/debug.py",
+      "original_source_sha256": "e31f8e4fd5c037aa12e3458b5ec56b6ade5da1f18dcfc4a14d4aea3edb7a6038",
+      "current_source_sha256": "e31f8e4fd5c037aa12e3458b5ec56b6ade5da1f18dcfc4a14d4aea3edb7a6038",
+      "original_executable_ast_sha256": "241808e8442f33d56a8c722a0b2edb022640f134b7b02aa36e57d0c088ecdfa4",
+      "current_executable_ast_sha256": "241808e8442f33d56a8c722a0b2edb022640f134b7b02aa36e57d0c088ecdfa4",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "psilogic/optimizer.py",
+      "original_source_sha256": "a39aae998e92aa6098654832eb2c13ac8971f6ffbb3057aba9dd1479d4f32a41",
+      "current_source_sha256": "a39aae998e92aa6098654832eb2c13ac8971f6ffbb3057aba9dd1479d4f32a41",
+      "original_executable_ast_sha256": "ea47ac14f583d70e17e7eb29c03a10de6e68fa4207daa8fcecb153bb95bba7c4",
+      "current_executable_ast_sha256": "ea47ac14f583d70e17e7eb29c03a10de6e68fa4207daa8fcecb153bb95bba7c4",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "psilogic/param_groups.py",
+      "original_source_sha256": "643d0d9aed94a254bb07c84f9cb864109fa4360f4f84e0ce8017582eb2a0abb8",
+      "current_source_sha256": "643d0d9aed94a254bb07c84f9cb864109fa4360f4f84e0ce8017582eb2a0abb8",
+      "original_executable_ast_sha256": "c765e439bc55558d54833abc94f554900296c577f5abc50f6ee7188feac548b5",
+      "current_executable_ast_sha256": "c765e439bc55558d54833abc94f554900296c577f5abc50f6ee7188feac548b5",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "psilogic/presets.py",
+      "original_source_sha256": "544ad6c16be9645ca4cf916b83990fa8ad958f6a6d6b4eaf846be30e6ba67423",
+      "current_source_sha256": "39e2573ecd32685be1f3a83b7f4b5f803bde0ad73bef44a6cb83b890263faa3e",
+      "original_executable_ast_sha256": "50d678a22ab99cd55de939022dfd16acae821d34adb524f0a2d6d1adc4271d19",
+      "current_executable_ast_sha256": "50d678a22ab99cd55de939022dfd16acae821d34adb524f0a2d6d1adc4271d19",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "psilogic/_chaos.py",
+      "original_source_sha256": "bc66d6c4fb96ee2ec47adc265a4de378686c2f9a5a0c740df1d7cd8c9aff3ec5",
+      "current_source_sha256": "a6be5577ae9ae8e598c510674ccdb1078e582478e8456ca6a73374e1cd879092",
+      "original_executable_ast_sha256": "eb6136f51b0162640a10591306ab9959f4f5739b63e65cd4b187a0936fd13755",
+      "current_executable_ast_sha256": "eb6136f51b0162640a10591306ab9959f4f5739b63e65cd4b187a0936fd13755",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "psilogic/_version.py",
+      "original_source_sha256": "510326ef9cf2c6fb7c02ce6de55a98f867217f6c0acda71366345b02e485db8f",
+      "current_source_sha256": "510326ef9cf2c6fb7c02ce6de55a98f867217f6c0acda71366345b02e485db8f",
+      "original_executable_ast_sha256": "755ec709660e069a4ec0ee07c387fcd24ffc86efc124e9187055d13a30101aa1",
+      "current_executable_ast_sha256": "755ec709660e069a4ec0ee07c387fcd24ffc86efc124e9187055d13a30101aa1",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "psilogic/__init__.py",
+      "original_source_sha256": "1e3ba0a28ff38bb16ef00caae51e1f8bf802f3e815784013f895e9d94764850a",
+      "current_source_sha256": "1e3ba0a28ff38bb16ef00caae51e1f8bf802f3e815784013f895e9d94764850a",
+      "original_executable_ast_sha256": "6f8b270b2aeb287178b13af98596a5fa0491d7240f8efe7216ddb997f9600195",
+      "current_executable_ast_sha256": "6f8b270b2aeb287178b13af98596a5fa0491d7240f8efe7216ddb997f9600195",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "scripts/build_arxiv_pdf.py",
+      "original_source_sha256": "8e85c9a19b5c7a30f4036481841807a762be8cf13f438b4a72320243871e3a0e",
+      "current_source_sha256": "8e85c9a19b5c7a30f4036481841807a762be8cf13f438b4a72320243871e3a0e",
+      "original_executable_ast_sha256": "bb01359d67a65db1776a696e3686e4378c4676722305fa0bb2122ffd8bed81de",
+      "current_executable_ast_sha256": "bb01359d67a65db1776a696e3686e4378c4676722305fa0bb2122ffd8bed81de",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "scripts/nlp_followup_bare_tau.py",
+      "original_source_sha256": "3454b1ce8c09fa158575c465bd14d54764955e108ea53850992b0b10718eea85",
+      "current_source_sha256": "7e6bf3d015c711aae8c8012c895fb2d56fb873c93b37beae0c6c708e2787a4b4",
+      "original_executable_ast_sha256": "48d44fd76789a34e42783124e02e96bd09c21e85e859bf57696245e32bd37020",
+      "current_executable_ast_sha256": "48d44fd76789a34e42783124e02e96bd09c21e85e859bf57696245e32bd37020",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "scripts/nlp_when_psilogic_beats_adamw.py",
+      "original_source_sha256": "d944a0579b5a2a3b9a9744916fb8d2207d5b6837eeeeda4c9d61419bd9c8d1e7",
+      "current_source_sha256": "f073e9129249f377375d6bcb6106d4256343e6aaa0c179cdc6f267cc1a5dfd73",
+      "original_executable_ast_sha256": "b62c9995e59c8bf64b596a1168c039c9fb8ac6df1d8dcf1be9e93d3ead5ee780",
+      "current_executable_ast_sha256": "b62c9995e59c8bf64b596a1168c039c9fb8ac6df1d8dcf1be9e93d3ead5ee780",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "scripts/paper_results.py",
+      "original_source_sha256": "afd1986d7daa6c21b9d2867a86c0a52046a591023372d380e13858c991cfaa2d",
+      "current_source_sha256": "afd1986d7daa6c21b9d2867a86c0a52046a591023372d380e13858c991cfaa2d",
+      "original_executable_ast_sha256": "6083d34707415e19e6846b7f2f62016f016a1150e5d8ac5627666f7a2ca45412",
+      "current_executable_ast_sha256": "6083d34707415e19e6846b7f2f62016f016a1150e5d8ac5627666f7a2ca45412",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "scripts/profile_optimizer.py",
+      "original_source_sha256": "4ec1a02ed51609d493e10bb4caef17c611cd29e54a708fde9b684f7eb3dd49ce",
+      "current_source_sha256": "4ec1a02ed51609d493e10bb4caef17c611cd29e54a708fde9b684f7eb3dd49ce",
+      "original_executable_ast_sha256": "cdcbfd60041ebf95465a3abfae5f41d0570530c02ab236b8c7fa7b15806ec2e7",
+      "current_executable_ast_sha256": "cdcbfd60041ebf95465a3abfae5f41d0570530c02ab236b8c7fa7b15806ec2e7",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "scripts/render_paper.py",
+      "original_source_sha256": "6415cf93e98d137dbf2acee5f6d667a1764437110614e499ec9f395e2baa1645",
+      "current_source_sha256": "6415cf93e98d137dbf2acee5f6d667a1764437110614e499ec9f395e2baa1645",
+      "original_executable_ast_sha256": "7688a8af5d81f3f1bc779b815d3045d22fb4bd3af05f1f5c652d7ed354ab78a5",
+      "current_executable_ast_sha256": "7688a8af5d81f3f1bc779b815d3045d22fb4bd3af05f1f5c652d7ed354ab78a5",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "tests/conftest.py",
+      "original_source_sha256": "e913e758816d2b7578c7dc3281d7a2dfb42760390b827c1f212ffc01ff50cf99",
+      "current_source_sha256": "e913e758816d2b7578c7dc3281d7a2dfb42760390b827c1f212ffc01ff50cf99",
+      "original_executable_ast_sha256": "7abf51f660e98cc4e5e7c624e0d5f45be5b91ac94d2b61fbc78ea510596742c2",
+      "current_executable_ast_sha256": "7abf51f660e98cc4e5e7c624e0d5f45be5b91ac94d2b61fbc78ea510596742c2",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "tests/helpers.py",
+      "original_source_sha256": "0006b6a86c4422e6b4845c7ceddbd496f43029f3a3db27c49123cbbbdd470cd4",
+      "current_source_sha256": "0006b6a86c4422e6b4845c7ceddbd496f43029f3a3db27c49123cbbbdd470cd4",
+      "original_executable_ast_sha256": "aea2b366e6932f347fbd131beca4252064ea745695fc0471e266b57f3870b053",
+      "current_executable_ast_sha256": "aea2b366e6932f347fbd131beca4252064ea745695fc0471e266b57f3870b053",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "tests/test_adamw_equivalence.py",
+      "original_source_sha256": "17f210a2974604d88de18c7b8a64bee6cc53d8c0b21a2d99bb9fc02d1f516464",
+      "current_source_sha256": "17f210a2974604d88de18c7b8a64bee6cc53d8c0b21a2d99bb9fc02d1f516464",
+      "original_executable_ast_sha256": "b9c1af672cb8c07abe227f26ed2d300203fd0264cdf8230a7fa4799089246c45",
+      "current_executable_ast_sha256": "b9c1af672cb8c07abe227f26ed2d300203fd0264cdf8230a7fa4799089246c45",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "tests/test_amp.py",
+      "original_source_sha256": "47a6a96023a9bb2fb5b24a5961a7c8dd7da2ab7bd63395e25bbeb80668041716",
+      "current_source_sha256": "47a6a96023a9bb2fb5b24a5961a7c8dd7da2ab7bd63395e25bbeb80668041716",
+      "original_executable_ast_sha256": "1c320bd6e8c98ce68ab7c70ae465f8cb7782c72f61e513828d6507320262574c",
+      "current_executable_ast_sha256": "1c320bd6e8c98ce68ab7c70ae465f8cb7782c72f61e513828d6507320262574c",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "tests/test_auto_config.py",
+      "original_source_sha256": "374c92c59d9b1b73983704cc00b62c27b2755119f671e8142d808b89a088fdd7",
+      "current_source_sha256": "374c92c59d9b1b73983704cc00b62c27b2755119f671e8142d808b89a088fdd7",
+      "original_executable_ast_sha256": "14771760f494d69007ee79b310b483764cd738e09b52b2a13bced1b1b69be14b",
+      "current_executable_ast_sha256": "14771760f494d69007ee79b310b483764cd738e09b52b2a13bced1b1b69be14b",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "tests/test_chaos_warmup.py",
+      "original_source_sha256": "62e344bb9b6d5f1a28aad11a90be2da69756bf1a6482eebbefa1100b1fc7585a",
+      "current_source_sha256": "62e344bb9b6d5f1a28aad11a90be2da69756bf1a6482eebbefa1100b1fc7585a",
+      "original_executable_ast_sha256": "1e09baaaea972868e1a0ad1f9ad5e78c219c065499f2468d52cac421a55b21d7",
+      "current_executable_ast_sha256": "1e09baaaea972868e1a0ad1f9ad5e78c219c065499f2468d52cac421a55b21d7",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "tests/test_ddp.py",
+      "original_source_sha256": "976c3164726723d1923f8b5cdac603f91e372e2472c14bfdda6e25390b534c4d",
+      "current_source_sha256": "976c3164726723d1923f8b5cdac603f91e372e2472c14bfdda6e25390b534c4d",
+      "original_executable_ast_sha256": "82894b6536a0d04fdb7403884ace0df5df4d3604d4c6e5eab79690cc1043317f",
+      "current_executable_ast_sha256": "82894b6536a0d04fdb7403884ace0df5df4d3604d4c6e5eab79690cc1043317f",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "tests/test_ddp_sync_batching.py",
+      "original_source_sha256": "4ced0d7d0872e6589385867330a6cb3ece69c964336d78ceee35773f7cd74635",
+      "current_source_sha256": "a14d6b738af8cfd237a0ffd44f029a879fcc914334625663756ae67b313cd9ed",
+      "original_executable_ast_sha256": "a3c01c39b9b8ab5024fcbf7bea2ef0eeb08cb8cb07c27a97514554fbe04e3dd5",
+      "current_executable_ast_sha256": "a3c01c39b9b8ab5024fcbf7bea2ef0eeb08cb8cb07c27a97514554fbe04e3dd5",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "tests/test_debug.py",
+      "original_source_sha256": "e3dddb85317b670ea713cbffeb09f14c5fc865b7e20fb48ff028fd56e115ba12",
+      "current_source_sha256": "e3dddb85317b670ea713cbffeb09f14c5fc865b7e20fb48ff028fd56e115ba12",
+      "original_executable_ast_sha256": "b3bc272846b0e1c739011d1cdc14e0ee252611af5b0ec52ea97f073c904a0ef1",
+      "current_executable_ast_sha256": "b3bc272846b0e1c739011d1cdc14e0ee252611af5b0ec52ea97f073c904a0ef1",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "tests/test_deepspeed.py",
+      "original_source_sha256": "924fd9d5195c6831d3be9972d7ba39b74b5facd277c0c658216898cf2a5d174e",
+      "current_source_sha256": "924fd9d5195c6831d3be9972d7ba39b74b5facd277c0c658216898cf2a5d174e",
+      "original_executable_ast_sha256": "51cea90b57665c315bf1b6b3a3023fa4a6bdd0e2b0eb58ddb5089bcaf9047292",
+      "current_executable_ast_sha256": "51cea90b57665c315bf1b6b3a3023fa4a6bdd0e2b0eb58ddb5089bcaf9047292",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "tests/test_fsdp.py",
+      "original_source_sha256": "f0575bfb99be3b1ac5fcff9a57d967937d6cda11e17ca7243f881c4169977cd2",
+      "current_source_sha256": "31c150cfae5dc5668fa77d38e0f4c91937e4665d0794addd9af2e50ae35af307",
+      "original_executable_ast_sha256": "307b43b60b4f0400084fa97f64b625107cc3cb00e8a55a44b49d61f1732e45a0",
+      "current_executable_ast_sha256": "307b43b60b4f0400084fa97f64b625107cc3cb00e8a55a44b49d61f1732e45a0",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "tests/test_gpt_preset.py",
+      "original_source_sha256": "91ccb2d4202b4466a0a9b15f21e708e844cf88616e9895cf2acb47a0a14ef376",
+      "current_source_sha256": "91ccb2d4202b4466a0a9b15f21e708e844cf88616e9895cf2acb47a0a14ef376",
+      "original_executable_ast_sha256": "e57801699aeaeb27eda36af7617d0cbfbe48b52a1e1bbc7097c9de640403a68c",
+      "current_executable_ast_sha256": "e57801699aeaeb27eda36af7617d0cbfbe48b52a1e1bbc7097c9de640403a68c",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "tests/test_grad_accum.py",
+      "original_source_sha256": "717961656b958d266485581a9449a75ecaf5f7d93444aa10a445733da6b07000",
+      "current_source_sha256": "717961656b958d266485581a9449a75ecaf5f7d93444aa10a445733da6b07000",
+      "original_executable_ast_sha256": "7c82f61a4566282c31661e5a0c68d29cf8c19c36dcab3e7517476f99961a8f60",
+      "current_executable_ast_sha256": "7c82f61a4566282c31661e5a0c68d29cf8c19c36dcab3e7517476f99961a8f60",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "tests/test_integrations.py",
+      "original_source_sha256": "94cf1b5f00f99a832b3a9ed0377ef8c24e34d6d4e45b098e7e21b3c4aece7489",
+      "current_source_sha256": "94cf1b5f00f99a832b3a9ed0377ef8c24e34d6d4e45b098e7e21b3c4aece7489",
+      "original_executable_ast_sha256": "f2b148ae84f218ae9507fd84043e43e914e11a3d85dd45f98f38725d4112cc86",
+      "current_executable_ast_sha256": "f2b148ae84f218ae9507fd84043e43e914e11a3d85dd45f98f38725d4112cc86",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "tests/test_low_precision_state.py",
+      "original_source_sha256": "1f50a205021b71707b8f691321475060fa4570b776ab705b7014d8d5e1c60c86",
+      "current_source_sha256": "77a953cec5ef7167f507f385c737ea665fbc2dd14eb1e2fcad2c64e2afff8bd1",
+      "original_executable_ast_sha256": "83d82a94e118784c67f60cb2c0940a5d9433a4647dca82a071d5d0bc2f9d89da",
+      "current_executable_ast_sha256": "83d82a94e118784c67f60cb2c0940a5d9433a4647dca82a071d5d0bc2f9d89da",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "tests/test_numerical_parity.py",
+      "original_source_sha256": "a483afac04321c77ca81e75e3362ae091ecdcff7d1f320c2a134e43a5de701e8",
+      "current_source_sha256": "a483afac04321c77ca81e75e3362ae091ecdcff7d1f320c2a134e43a5de701e8",
+      "original_executable_ast_sha256": "2cb638f35bdd501f884bec5acd2d5b9dba979ef66e117e10f968d5563c78b0be",
+      "current_executable_ast_sha256": "2cb638f35bdd501f884bec5acd2d5b9dba979ef66e117e10f968d5563c78b0be",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "tests/test_preset_source_of_truth.py",
+      "original_source_sha256": "4ffd544f8e78a932cbe01ae1e6de3af12b8a589a95c25b7e605240c121b268e6",
+      "current_source_sha256": "4ffd544f8e78a932cbe01ae1e6de3af12b8a589a95c25b7e605240c121b268e6",
+      "original_executable_ast_sha256": "daa2041de118a7cf9ac4888a11eb24cadac42d05e3f90b015cb40d246d24d45c",
+      "current_executable_ast_sha256": "daa2041de118a7cf9ac4888a11eb24cadac42d05e3f90b015cb40d246d24d45c",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "tests/test_psilogic.py",
+      "original_source_sha256": "fbec829ecea84c4020e0e1d1e3a6c08d99640c535987bb85be364e062780c788",
+      "current_source_sha256": "8444fc7d6ad48a84387b6b620fbcac4ae106e6b8780f84d4c9d91a9ae117e276",
+      "original_executable_ast_sha256": "c51c0ce9286d9e43b15368719d592f271c5ca0011b3d8bc6a574ef3ef1a3976e",
+      "current_executable_ast_sha256": "c51c0ce9286d9e43b15368719d592f271c5ca0011b3d8bc6a574ef3ef1a3976e",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "tests/test_scale_invariance.py",
+      "original_source_sha256": "419f1320ab4491cc0dea72e364c50b389c24c4b63f525962f126b8286964da57",
+      "current_source_sha256": "419f1320ab4491cc0dea72e364c50b389c24c4b63f525962f126b8286964da57",
+      "original_executable_ast_sha256": "1f2618615c6c8d056817aecc50ea3d0611f24503baf1daf889d7b5fe036ec742",
+      "current_executable_ast_sha256": "1f2618615c6c8d056817aecc50ea3d0611f24503baf1daf889d7b5fe036ec742",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "tests/test_soft_chaos_trust.py",
+      "original_source_sha256": "8ee377b1122056c39c1108274acec50b67ae620ea19853f4da8b92736b4fa88d",
+      "current_source_sha256": "8ee377b1122056c39c1108274acec50b67ae620ea19853f4da8b92736b4fa88d",
+      "original_executable_ast_sha256": "51270573449e56b14bdf6f52b863960ec7be028632739d899d3f5e528ad470b8",
+      "current_executable_ast_sha256": "51270573449e56b14bdf6f52b863960ec7be028632739d899d3f5e528ad470b8",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "tests/test_state_dict_migration.py",
+      "original_source_sha256": "f0ce2cee9bb9ea5908ea5bc06b96e55b84fb60ca8ed08781376b9f765a1ae44c",
+      "current_source_sha256": "f0ce2cee9bb9ea5908ea5bc06b96e55b84fb60ca8ed08781376b9f765a1ae44c",
+      "original_executable_ast_sha256": "c52f9e44d337ddc505757fe4eade6f0a7d7dacec21728283ce80daa815a04e7f",
+      "current_executable_ast_sha256": "c52f9e44d337ddc505757fe4eade6f0a7d7dacec21728283ce80daa815a04e7f",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "tests/test_step_overhead.py",
+      "original_source_sha256": "04453a180dc09b56753029ca8236921e5e53f785252b7cbea4a823eb3b0b7ccf",
+      "current_source_sha256": "04453a180dc09b56753029ca8236921e5e53f785252b7cbea4a823eb3b0b7ccf",
+      "original_executable_ast_sha256": "c4fadcb55a34b4938decaa0bae639bc5bdb406392fcb484b7ea8356cabceeabd",
+      "current_executable_ast_sha256": "c4fadcb55a34b4938decaa0bae639bc5bdb406392fcb484b7ea8356cabceeabd",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "tests/test_stress_explosion.py",
+      "original_source_sha256": "61887136a4c45b9c7f9224ddc5a3c82b1dfe70389bdf897d201bd8c2482afd3b",
+      "current_source_sha256": "61887136a4c45b9c7f9224ddc5a3c82b1dfe70389bdf897d201bd8c2482afd3b",
+      "original_executable_ast_sha256": "9659459ff65836a6f79de5516fecb3a7f35745560cd85b9f93d7a7bdf2dc75ae",
+      "current_executable_ast_sha256": "9659459ff65836a6f79de5516fecb3a7f35745560cd85b9f93d7a7bdf2dc75ae",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "tests/test_synthetic_2d.py",
+      "original_source_sha256": "7b740ff2d380927bcd9eacc1d3c58b014d5a15d760eafa0b68dbf93450a876e5",
+      "current_source_sha256": "7b740ff2d380927bcd9eacc1d3c58b014d5a15d760eafa0b68dbf93450a876e5",
+      "original_executable_ast_sha256": "ca062fa4856a4fb7e46c78f9f3ad221e102cf1c3f7595c84d3af69d722b8e08e",
+      "current_executable_ast_sha256": "ca062fa4856a4fb7e46c78f9f3ad221e102cf1c3f7595c84d3af69d722b8e08e",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "tests/test_torch_compile.py",
+      "original_source_sha256": "8ef833e6230e7969bcd353667e24522d261f86763523e2ce90af544fe33482cf",
+      "current_source_sha256": "8ef833e6230e7969bcd353667e24522d261f86763523e2ce90af544fe33482cf",
+      "original_executable_ast_sha256": "fef69fdfae1b3186275909942d0101b936ede2c83878afb326f8fbe992124d78",
+      "current_executable_ast_sha256": "fef69fdfae1b3186275909942d0101b936ede2c83878afb326f8fbe992124d78",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "tests/test_vit_preset.py",
+      "original_source_sha256": "2ee6d969e6cd2bfe4c8b52a6dcb5c8704d63368906d74e81cfe221db6f901410",
+      "current_source_sha256": "2ee6d969e6cd2bfe4c8b52a6dcb5c8704d63368906d74e81cfe221db6f901410",
+      "original_executable_ast_sha256": "f348c73d092161c9be9fe9e9b7678bc8982b782dc979221bfe21fd94ffc9b893",
+      "current_executable_ast_sha256": "f348c73d092161c9be9fe9e9b7678bc8982b782dc979221bfe21fd94ffc9b893",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "tests/toy_models.py",
+      "original_source_sha256": "3cf5782732a8d61b9232a57d1beb61cf1172e27729a93eb6c9530143e38794a8",
+      "current_source_sha256": "3cf5782732a8d61b9232a57d1beb61cf1172e27729a93eb6c9530143e38794a8",
+      "original_executable_ast_sha256": "5abee72d24d52ee0206e9e28c546bf11c005c013dc80f419f0731d63b35907e9",
+      "current_executable_ast_sha256": "5abee72d24d52ee0206e9e28c546bf11c005c013dc80f419f0731d63b35907e9",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "tests/__init__.py",
+      "original_source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "current_source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_executable_ast_sha256": "ad2e13b69c4fc1fda46413f740f426fc1793cfc6d6da8d226ba619f1aef48be7",
+      "current_executable_ast_sha256": "ad2e13b69c4fc1fda46413f740f426fc1793cfc6d6da8d226ba619f1aef48be7",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "research/convergence/build_manuscript.py",
+      "original_source_sha256": "f5d812768bfec175d4cc627cab3d4e70ff545522d2ab1c46d22474071e5803c0",
+      "current_source_sha256": "dddb83fc24d2ec02e6d4af4e622f28f2854cc434cf328658b2e6350d6996167c",
+      "original_executable_ast_sha256": "097241430fbe8964d6fd45c5a015287dc855ca2fd29fcf3a6497bb8a823b6d1a",
+      "current_executable_ast_sha256": "097241430fbe8964d6fd45c5a015287dc855ca2fd29fcf3a6497bb8a823b6d1a",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "research/convergence/counterexample_checks.py",
+      "original_source_sha256": "0ffb7a8a4cd96bf342921e01e25f193930091fa02de190a7735dfd08847d11ad",
+      "current_source_sha256": "13dd4bfba9650635f32a2bc2b5d958b63d1172552fa5c2ae1cea5fdcb93f9221",
+      "original_executable_ast_sha256": "f49c7eda706854a037a647c486a4e470335f651fccd23ef96513a93f02f7bb05",
+      "current_executable_ast_sha256": "f49c7eda706854a037a647c486a4e470335f651fccd23ef96513a93f02f7bb05",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "research/unified/build.py",
+      "original_source_sha256": "79b6813a9cc58d1a52ee4a00962fa5b2e19941793bd0ad91877fa94cbb9318b0",
+      "current_source_sha256": "6e16ebf76c5077800109c5b87cf2ec21f72b64f7351eb921905a0bccc4aa99f7",
+      "original_executable_ast_sha256": "d33da989195ca40a103906aa4eeeb95d7e49be01b2e02a22b8b7f7d74c4d91ba",
+      "current_executable_ast_sha256": "d33da989195ca40a103906aa4eeeb95d7e49be01b2e02a22b8b7f7d74c4d91ba",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "research/convergence/lean/verify_lean.py",
+      "original_source_sha256": "ab4060238fd7f6434270d8086c24c4c8ce74c512ab3995010c8ca53696011505",
+      "current_source_sha256": "a208a18bec59d2a148720a0e19d300e00057b3d164a677d884b34f5090f1e5da",
+      "original_executable_ast_sha256": "ae7678d45f1dec017d303e1f2ba5594f5014d4d01627f0d076804a28d79609c3",
+      "current_executable_ast_sha256": "ae7678d45f1dec017d303e1f2ba5594f5014d4d01627f0d076804a28d79609c3",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "research/convergence/verification/check_proof_algebra.py",
+      "original_source_sha256": "cf42d2b8a51ae6e2993722725377f10a77f7cf687dca84898051e430c26d3628",
+      "current_source_sha256": "67096bfb66f058c78c86aea72ed9355ca0df66377d83ca1b404724440985c7ce",
+      "original_executable_ast_sha256": "44e19defc68e52834d20c78634e1e0fdc50d53acf0a789260ec050cb1472bc8b",
+      "current_executable_ast_sha256": "44e19defc68e52834d20c78634e1e0fdc50d53acf0a789260ec050cb1472bc8b",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "research/convergence/verification/check_recurrence.py",
+      "original_source_sha256": "9f56edb4214e563a03b1f21dc3cb1f733b86b38b7a6f1f5f4bafad6522d82b57",
+      "current_source_sha256": "057a950578372747b2750afcddd708e2bb068654600b126beda01f8567268a1f",
+      "original_executable_ast_sha256": "0fe02ff57fcd921ea536e77176549c4ecd7f523a01892e31598ebb3b757c576a",
+      "current_executable_ast_sha256": "0fe02ff57fcd921ea536e77176549c4ecd7f523a01892e31598ebb3b757c576a",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "research/convergence/verification/check_source_integrity.py",
+      "original_source_sha256": "31cfe8f9dedc1611394c07ea706aeb7b2e9abca40277fdb479ee0bc78837c600",
+      "current_source_sha256": "03d2a84944943e133d2118a9e7e5407cbb66a95a5e44eaeae424280ef69e5667",
+      "original_executable_ast_sha256": "365a0a056e71065fe8a3e0d6ca6320f83d97ac948f71cee28da36e0938eeb8ba",
+      "current_executable_ast_sha256": "365a0a056e71065fe8a3e0d6ca6320f83d97ac948f71cee28da36e0938eeb8ba",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "psilogic/integrations/hf.py",
+      "original_source_sha256": "b93d5604c7e7571a5efd36c4ddfd1d753c32859dd73831cd26b13e01c68d8485",
+      "current_source_sha256": "b93d5604c7e7571a5efd36c4ddfd1d753c32859dd73831cd26b13e01c68d8485",
+      "original_executable_ast_sha256": "16f25340fd61dd2b28188ccc1e5cef39370f05a49224e2555b167134235e3e59",
+      "current_executable_ast_sha256": "16f25340fd61dd2b28188ccc1e5cef39370f05a49224e2555b167134235e3e59",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "psilogic/integrations/lightning.py",
+      "original_source_sha256": "3825984e93404db646d2478a7f30b4762e80ddbdd0a1488042f6602a117a38d9",
+      "current_source_sha256": "3825984e93404db646d2478a7f30b4762e80ddbdd0a1488042f6602a117a38d9",
+      "original_executable_ast_sha256": "0f982195236cdfe75963de398fa5a6afd1a41a51c348fa6a7f3f2c049d38f541",
+      "current_executable_ast_sha256": "0f982195236cdfe75963de398fa5a6afd1a41a51c348fa6a7f3f2c049d38f541",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "psilogic/integrations/__init__.py",
+      "original_source_sha256": "86ae9f286d3fe03a82357c2a49f9d04e1ae0767fc46227f81a368b01c9cfc1ef",
+      "current_source_sha256": "86ae9f286d3fe03a82357c2a49f9d04e1ae0767fc46227f81a368b01c9cfc1ef",
+      "original_executable_ast_sha256": "4efe82f55b3cece9efdeef43a4d4630c5234a536588d5cf65a09429f817bdb58",
+      "current_executable_ast_sha256": "4efe82f55b3cece9efdeef43a4d4630c5234a536588d5cf65a09429f817bdb58",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "psilogic/_cuda/kernels.py",
+      "original_source_sha256": "da9d1bf7c1172cf4e1f4b1037a1b4727c7bccc48566f1ee84e5ac3367583500f",
+      "current_source_sha256": "8ae9bc7850386982d351ecbc095fd7b4785d58b7486eb34aca76d644c8397693",
+      "original_executable_ast_sha256": "b738fa1db87a05a0eb54485b009adf0256173ba930a1af48e34df8642abded63",
+      "current_executable_ast_sha256": "b738fa1db87a05a0eb54485b009adf0256173ba930a1af48e34df8642abded63",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "psilogic/_cuda/step.py",
+      "original_source_sha256": "91f3a0ae0385410ab288cadc24b350f4e81741088042e446c82baa8d3938dcd4",
+      "current_source_sha256": "91f3a0ae0385410ab288cadc24b350f4e81741088042e446c82baa8d3938dcd4",
+      "original_executable_ast_sha256": "deebdcc0376fa1451b6ec4e3964ee95246c155c3ac87d50bcee371a871942361",
+      "current_executable_ast_sha256": "deebdcc0376fa1451b6ec4e3964ee95246c155c3ac87d50bcee371a871942361",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "psilogic/_cuda/__init__.py",
+      "original_source_sha256": "6ae4b76fbbcbbed1ecb6a6ff8bb73b0498b1738fcef192ee386c26c1bc640a3f",
+      "current_source_sha256": "6ae4b76fbbcbbed1ecb6a6ff8bb73b0498b1738fcef192ee386c26c1bc640a3f",
+      "original_executable_ast_sha256": "11235c9c97ea691000c9a9c6aed70d1b83956b6e353d16b4c1c62c891b1579f1",
+      "current_executable_ast_sha256": "11235c9c97ea691000c9a9c6aed70d1b83956b6e353d16b4c1c62c891b1579f1",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "benchmark/fairbench/analysis.py",
+      "original_source_sha256": "110a8440f01544a56be6cae919b079c895bf354fb2b7cf879fab60b2ef86ee15",
+      "current_source_sha256": "110a8440f01544a56be6cae919b079c895bf354fb2b7cf879fab60b2ef86ee15",
+      "original_executable_ast_sha256": "a3eb33cdf3f3d035cf53686137b72ebc862e808644b4758642cca422483c94d6",
+      "current_executable_ast_sha256": "a3eb33cdf3f3d035cf53686137b72ebc862e808644b4758642cca422483c94d6",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "benchmark/fairbench/cli.py",
+      "original_source_sha256": "014d42a24ee275ae2f0f5c9df0c59cbe4250507795741d43437a0cfdcb1057d2",
+      "current_source_sha256": "014d42a24ee275ae2f0f5c9df0c59cbe4250507795741d43437a0cfdcb1057d2",
+      "original_executable_ast_sha256": "92d2fcb13124368f93b1206dbfbbce3ab3d835c5219295eb4a29b2cbaf6f9222",
+      "current_executable_ast_sha256": "92d2fcb13124368f93b1206dbfbbce3ab3d835c5219295eb4a29b2cbaf6f9222",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "benchmark/fairbench/config.py",
+      "original_source_sha256": "dca78ed45020f5be7874de6e1f51daa5bab1a87d1651e131bfa7fbb2374f39a9",
+      "current_source_sha256": "92ba50d2322a452783986e16acfb0cdb1790d18a4dec5844157a66afa0f9b1d5",
+      "original_executable_ast_sha256": "3299894e56c873b5f642e6658854081e6393cfab1a08b13c88d781684a34ea0e",
+      "current_executable_ast_sha256": "3299894e56c873b5f642e6658854081e6393cfab1a08b13c88d781684a34ea0e",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "benchmark/fairbench/datasets.py",
+      "original_source_sha256": "7d733a0c318237f99eb58fe93929f6f3767663627d3be2ec8b262e2788482033",
+      "current_source_sha256": "2ed4033947c32871a3584210a3718ee29f4ce522547be29be8c405d70a00406a",
+      "original_executable_ast_sha256": "53cc148c50be753593ec7142d5ef5bb2761f1a258b0dff4c2a99fed6c33027c9",
+      "current_executable_ast_sha256": "53cc148c50be753593ec7142d5ef5bb2761f1a258b0dff4c2a99fed6c33027c9",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "benchmark/fairbench/download.py",
+      "original_source_sha256": "31dc56c4f02a12538c71f8f1329b75b568f306552bb75c3193570e7553970f76",
+      "current_source_sha256": "31dc56c4f02a12538c71f8f1329b75b568f306552bb75c3193570e7553970f76",
+      "original_executable_ast_sha256": "1af39b6199e26b39e70559c23f6b1b14f29e3ddc2ddc9823664f78adc1c6b263",
+      "current_executable_ast_sha256": "1af39b6199e26b39e70559c23f6b1b14f29e3ddc2ddc9823664f78adc1c6b263",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "benchmark/fairbench/logging_utils.py",
+      "original_source_sha256": "b9ddf57d55ab9f8572020c21fcf7430fd6c8aacc5b344ee755333c7640dfeb68",
+      "current_source_sha256": "b9ddf57d55ab9f8572020c21fcf7430fd6c8aacc5b344ee755333c7640dfeb68",
+      "original_executable_ast_sha256": "20790d6280debcee142b3a2755f985b43b7e631b0f634dc95dbecfafc2c29c32",
+      "current_executable_ast_sha256": "20790d6280debcee142b3a2755f985b43b7e631b0f634dc95dbecfafc2c29c32",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "benchmark/fairbench/metrics.py",
+      "original_source_sha256": "907ce6b1dfaed2c221c09508b5fa893254ac7e357b039f1fe414cae29659ecba",
+      "current_source_sha256": "02dcc6a021bdac64108ebd0b498c7e4246d9ac3b3f28b39acb9f3af6862e6814",
+      "original_executable_ast_sha256": "ca218016b9d261221ebff4ca3840e5d65ec40e327c3cc731c2c7333ff8c6ccfe",
+      "current_executable_ast_sha256": "ca218016b9d261221ebff4ca3840e5d65ec40e327c3cc731c2c7333ff8c6ccfe",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "benchmark/fairbench/optimizers.py",
+      "original_source_sha256": "734e58eff761a75f86d66b4715b793bf017010b030fb972839196c3b336df102",
+      "current_source_sha256": "6799aa790af2d73af6d30579d5951b43921d2ce3973fab96c5a2ecfbfb5f9b53",
+      "original_executable_ast_sha256": "fc4abda543ba7baee899d7778617a3a25192fd77689b770923c1bfa0b2b11c75",
+      "current_executable_ast_sha256": "fc4abda543ba7baee899d7778617a3a25192fd77689b770923c1bfa0b2b11c75",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "benchmark/fairbench/plotting.py",
+      "original_source_sha256": "8905b1736a18ab008a6c0e563c5ab9a3fa5f301073ab1995b366781cb22bd45d",
+      "current_source_sha256": "8905b1736a18ab008a6c0e563c5ab9a3fa5f301073ab1995b366781cb22bd45d",
+      "original_executable_ast_sha256": "a9b0f3ec227888fc4ac04195664022941d6011b85911f3a8320dc2b2b053bd23",
+      "current_executable_ast_sha256": "a9b0f3ec227888fc4ac04195664022941d6011b85911f3a8320dc2b2b053bd23",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "benchmark/fairbench/probe.py",
+      "original_source_sha256": "96138776333606bd38dacaea8dfaf2e5292332355a0772d2e09012beb065c442",
+      "current_source_sha256": "96138776333606bd38dacaea8dfaf2e5292332355a0772d2e09012beb065c442",
+      "original_executable_ast_sha256": "1de414398fe67399ec6e352ebc1bfa5103e38d72c8596fe7fde8c2b04d304561",
+      "current_executable_ast_sha256": "1de414398fe67399ec6e352ebc1bfa5103e38d72c8596fe7fde8c2b04d304561",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "benchmark/fairbench/runner.py",
+      "original_source_sha256": "86b32e2dcac967e9b672c525457ff48b64d44fd54e66ea3e45ed7f3e68e655de",
+      "current_source_sha256": "b370e7a6d0cc14e0616bf647a60788229f91a7e8f911ce9040d370f8af988803",
+      "original_executable_ast_sha256": "f4cb122a0436bfb50b7cd731a601c9ad49be9fe8e45d7a9153b7db3009784d66",
+      "current_executable_ast_sha256": "f4cb122a0436bfb50b7cd731a601c9ad49be9fe8e45d7a9153b7db3009784d66",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "benchmark/fairbench/utils.py",
+      "original_source_sha256": "cc1e6bee98ba25f3fe4455e862aa42b302fdc5c4430bda76dbd6084a99a4fbd2",
+      "current_source_sha256": "cc1e6bee98ba25f3fe4455e862aa42b302fdc5c4430bda76dbd6084a99a4fbd2",
+      "original_executable_ast_sha256": "192bc24468877f08c30e160cbc8a187f04b9f67691629c0f9726dadf991f9f92",
+      "current_executable_ast_sha256": "192bc24468877f08c30e160cbc8a187f04b9f67691629c0f9726dadf991f9f92",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "benchmark/fairbench/__init__.py",
+      "original_source_sha256": "447ae9f8ec400c8303932e5ece290ce2e2e1ce45edc2c8140862c73f838ed0ee",
+      "current_source_sha256": "447ae9f8ec400c8303932e5ece290ce2e2e1ce45edc2c8140862c73f838ed0ee",
+      "original_executable_ast_sha256": "b32647043f96defb925d4d8eabe24a119229f5170b2f3e3b9fd886af7b802d7b",
+      "current_executable_ast_sha256": "b32647043f96defb925d4d8eabe24a119229f5170b2f3e3b9fd886af7b802d7b",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "benchmark/fairbench/__main__.py",
+      "original_source_sha256": "141cd2baa486ef799f0da8bf8841de87aad1a20e3625e37d641c9381d90e6725",
+      "current_source_sha256": "141cd2baa486ef799f0da8bf8841de87aad1a20e3625e37d641c9381d90e6725",
+      "original_executable_ast_sha256": "7d1f5a53ffb7f547cf086a0fadb91f257bb2c8142e6c16e207e2b88cd9fd187e",
+      "current_executable_ast_sha256": "7d1f5a53ffb7f547cf086a0fadb91f257bb2c8142e6c16e207e2b88cd9fd187e",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "benchmark/fairbench/arenas/base.py",
+      "original_source_sha256": "d0995b744ed9a87fb5821a3566151a576403e8512a0666506edcc869137aae23",
+      "current_source_sha256": "d0995b744ed9a87fb5821a3566151a576403e8512a0666506edcc869137aae23",
+      "original_executable_ast_sha256": "c22a558ed1f3ba8be181c14d1044c9ef86eda7c336f165559b1b52e134d39536",
+      "current_executable_ast_sha256": "c22a558ed1f3ba8be181c14d1044c9ef86eda7c336f165559b1b52e134d39536",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "benchmark/fairbench/arenas/diffusion.py",
+      "original_source_sha256": "892b7df31842a32edf646a4ba43ad67672a4ba911338e416e94b8a39444905a2",
+      "current_source_sha256": "892b7df31842a32edf646a4ba43ad67672a4ba911338e416e94b8a39444905a2",
+      "original_executable_ast_sha256": "88a1d63f653fb782ba2571876d72f324a029c4716755ad9f237459f2fe72ff35",
+      "current_executable_ast_sha256": "88a1d63f653fb782ba2571876d72f324a029c4716755ad9f237459f2fe72ff35",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "benchmark/fairbench/arenas/nlp.py",
+      "original_source_sha256": "bfde8c0defc263b320caa28ac8c91856bb8c5cbe5b6d20c32572a4e7161808a1",
+      "current_source_sha256": "d902000eb0533ec4f229c145c170fa9915c3fafc2bc33b11be4a849176657396",
+      "original_executable_ast_sha256": "d18a5e1fbcb88a4e1a7f7165080a48796f2cb73c2591da3b870b6221f0fb681a",
+      "current_executable_ast_sha256": "d18a5e1fbcb88a4e1a7f7165080a48796f2cb73c2591da3b870b6221f0fb681a",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "benchmark/fairbench/arenas/resnet.py",
+      "original_source_sha256": "37ffae9ec808be96522dfad0f04c9467cef01a8c22aac8d9159ba02a7f11a6cd",
+      "current_source_sha256": "37ffae9ec808be96522dfad0f04c9467cef01a8c22aac8d9159ba02a7f11a6cd",
+      "original_executable_ast_sha256": "d315ce8f73f72ce4623e638f965d9dcb08253c0a75bffe571e6805cb347e5805",
+      "current_executable_ast_sha256": "d315ce8f73f72ce4623e638f965d9dcb08253c0a75bffe571e6805cb347e5805",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "benchmark/fairbench/arenas/vit.py",
+      "original_source_sha256": "bcc9e8603796c94b0b51a502da023d11719ba8c92701da6b14dacbfb07d5b20c",
+      "current_source_sha256": "bcc9e8603796c94b0b51a502da023d11719ba8c92701da6b14dacbfb07d5b20c",
+      "original_executable_ast_sha256": "d5a4bf3e47814619ef9576fff2cb072167af866876973b7e67c6839b4458d59f",
+      "current_executable_ast_sha256": "d5a4bf3e47814619ef9576fff2cb072167af866876973b7e67c6839b4458d59f",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "benchmark/fairbench/arenas/__init__.py",
+      "original_source_sha256": "06f85c164cc922217f5ad495474cbb200d5af3ee5b15ba66c3145162c6e8a4e8",
+      "current_source_sha256": "06f85c164cc922217f5ad495474cbb200d5af3ee5b15ba66c3145162c6e8a4e8",
+      "original_executable_ast_sha256": "71159a04d9457514c1a5eeec913ed218b03347923e8a3eb866839421d16dbbd4",
+      "current_executable_ast_sha256": "71159a04d9457514c1a5eeec913ed218b03347923e8a3eb866839421d16dbbd4",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "benchmark/fairbench/models/gpt.py",
+      "original_source_sha256": "02f7e3320693695eeaebeaf79c1804e58cfebed7503fa4993f72de89c102caa0",
+      "current_source_sha256": "02f7e3320693695eeaebeaf79c1804e58cfebed7503fa4993f72de89c102caa0",
+      "original_executable_ast_sha256": "25586f23fd842d60ccf4f32c9bcfeb0a5bb674b4056063380853bf18cfc3ffb3",
+      "current_executable_ast_sha256": "25586f23fd842d60ccf4f32c9bcfeb0a5bb674b4056063380853bf18cfc3ffb3",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "benchmark/fairbench/models/unet.py",
+      "original_source_sha256": "bb58ec4f55ab636df1a32070a8f0b73118a4de6ff9f223ebb73658e07a2de3a4",
+      "current_source_sha256": "bb58ec4f55ab636df1a32070a8f0b73118a4de6ff9f223ebb73658e07a2de3a4",
+      "original_executable_ast_sha256": "8731706cf634b3071ac6cd878986697e60a74be7655b358b58f0ee55ff6bfb8a",
+      "current_executable_ast_sha256": "8731706cf634b3071ac6cd878986697e60a74be7655b358b58f0ee55ff6bfb8a",
+      "executable_ast_unchanged": true
+    },
+    {
+      "path": "benchmark/fairbench/models/__init__.py",
+      "original_source_sha256": "756f1e702db61c4cefaff4bc72a96c66d6c258d147235ada4b74deb2775ed8b7",
+      "current_source_sha256": "756f1e702db61c4cefaff4bc72a96c66d6c258d147235ada4b74deb2775ed8b7",
+      "original_executable_ast_sha256": "065ab237211591d6450bbedb54384f7685b2c5ca25083653915cde238635faf1",
+      "current_executable_ast_sha256": "065ab237211591d6450bbedb54384f7685b2c5ca25083653915cde238635faf1",
+      "executable_ast_unchanged": true
+    }
+  ]
+}

@@ -1,16 +1,21 @@
 # ΨLogic
 
-PyTorch optimizer: Adam + chaos-gated damping. Extra term kicks in when gradient
-noise spikes and fades when things settle. Drop-in for `torch.optim.Adam`.
+PyTorch optimizer that scales Adam updates using gradient-norm statistics and
+gradient-momentum disagreement. It uses the standard PyTorch optimizer interface.
 
 Alpha, v0.6. Paper: [arXiv:2607.16268](https://arxiv.org/abs/2607.16268).
 PyPI: [`psilogic`](https://pypi.org/project/psilogic/).
 
 ```
-dΨ/dt = -iĤ·Ψ  −  γ·P·chaos(S_t)·Ψ
-         └──────┘   └───────────────┘
-          Gradient   Active Cancellation
+Ψ_{t+1} = Ψ_t − η · trust_t · m̂_t / (√v̂_t + ε)
+
+trust_t = 1 − min(γ_t · P · w_t · chaos_t, max_cancel)
+          └───────────────────────────────────────────┘
+                       Active Cancellation
 ```
+
+`trust_t` multiplies the Adam step. `γ` controls damping strength together with
+`p_ext` and the detector signal; `max_cancel` caps the withheld fraction.
 
 ## Install
 
@@ -66,7 +71,8 @@ For task defaults use `PsiLogicNLP` / `PsiLogicGPT` / `PsiLogicViT` /
 Tested with: AMP / bf16, DDP, grad accumulation, `torch.compile`, foreach +
 fused CUDA. FSDP / DeepSpeed are experimental.
 
-**Where it helps:** from-scratch LM and ResNet — ties AdamW, beats Adam.
+**Saved results:** from-scratch LM and ResNet have similar quality to AdamW
+and outperform Adam in the reported runs.
 **Where it doesn't:** the June ViT win did not hold on the Sep 2026 H100 re-run
 (Lion ahead). Diffusion was a tie in the paper run; that arena did not finish
 in the fused re-run. With `psilogic[cuda]` on H100, FairBench wall time is
@@ -75,28 +81,69 @@ in the fused re-run. With `psilogic[cuda]` on H100, FairBench wall time is
 ## How it works
 
 ```
-Ψ_{t+1} = Ψ_t
-         − η · m̂_t / (√v̂_t + ε)         ← Adam
-         − η · γ · P · chaos_t · Ψ_t      ← cancellation
+Ψ_{t+1} = Ψ_t − η · trust_t · m̂_t / (√v̂_t + ε)           ← Adam, scaled by trust
+trust_t = 1 − min(γ_t · P · w_t · chaos_t, max_cancel)    ← cancellation
 ```
 
-Chaos is a dual EMA of scale-normalized grad norms:
+`w_t` is the chaos warmup gain, `γ_t` is γ after the optional cosine schedule,
+`P` is `p_ext`. `max_cancel` is capped at 0.99 internally, so `trust` never
+reaches zero. The Adam term above is the default; with `lion_mode=True` the
+same `trust` scales the Lion sign-momentum step instead.
+
+Chaos is a signal in `[0, 1]` combining a normalized gradient-norm statistic
+with gradient-momentum disagreement. It is a heuristic, not a convergence test.
 
 ```
-gn_t   = ‖∇_t‖₂ / √(numel)
-fast_t = 0.90 · fast_{t-1} + 0.10 · gn_t
-slow_t = 0.99 · slow_{t-1} + 0.01 · gn_t
+gn_t = ‖∇_t‖₂ / √numel
+
+t = 1 (init):   ḡ_1 = gn_1,   fast_1 = slow_1 = 1
+
+t ≥ 2 (EMA update):
+  ḡ_t     = 0.99 · ḡ_{t-1} + 0.01 · gn_t
+  r_t     = gn_t / (ḡ_t + ε)
+  fast_t  = 0.90 · fast_{t-1} + 0.10 · r_t
+  slow_t  = 0.99 · slow_{t-1} + 0.01 · r_t
+
 ratio_t = fast_t / (slow_t + ε)
-chaos_t = tanh(slow_t) · (1 + 0.5 · tanh(relu(ratio_t − 1)))
+
+excess_t   = σ( k · (ratio_t − 1) ),   k = 4 / max(tau_scale − 1, 0.25)
+disagree_t = ½ · (1 − cos(∇_t, m_{t-1}))          (0 at t = 1)
+chaos_t    = tanh(slow_t) · (½ · excess_t + ½ · disagree_t)
 ```
 
-Early noisy grads → chaos near 1. Converged → near 0. Full writeup:
+With `adaptive_tau=False`: `excess_t = σ( 4 · (slow_t / chaos_tau − 1) )`.
+
+Schedules:
+
+```
+w_t = 0                                          if t ≤ warmup
+    = min(1, (t − warmup) / max(1, warmup // 4)) otherwise
+
+warmup = chaos_warmup                            if chaos_warmup ≥ 0
+       = max(500, T // 20)                       if chaos_warmup = -1 and T > 0
+       = 200                                     if chaos_warmup = -1 and T = 0
+
+γ_t = γ · ½ · (1 + cos(π · min(t / T, 1)))       if gamma_T_max = T > 0
+    = γ                                          otherwise
+```
+
+`gamma_auto=True` additionally scales γ down when `slow_t < 0.1` (floor at 10%
+of γ). Chaos also fades on its own when gradients go quiet (`tanh(slow) → 0`).
+
+Larger detector values reduce trust; as the signal tends to zero, trust tends
+to 1. During warmup, cancellation is inactive. The Adam update still includes
+any configured weight decay. Full writeup:
 [arXiv:2607.16268](https://arxiv.org/abs/2607.16268), [PAPER.md](PAPER.md).
 
 | Flag | Meaning |
 |:-----|:--------|
-| `gamma` | Max cancellation strength |
+| `gamma` | Damping strength before amplification, schedules and the cancellation cap |
 | `p_ext` | Chaos amplification |
+| `max_cancel` | Hard cap on the withheld fraction |
+| `adaptive_tau` / `tau_scale` | Sharpness of the fast/slow excess gate |
+| `chaos_tau` | Gate threshold when `adaptive_tau=False` |
+| `chaos_warmup` | Steps before chaos turns on (`-1` = auto) |
+| `gamma_T_max` | Cosine γ decay horizon in steps (`0` = off) |
 | `agc_clip` | Adaptive grad clip (`0` = off) |
 | `grad_centralize` | Subtract spatial mean from grads |
 | `use_fused_cuda` | Triton fused step if CUDA+Triton present |
@@ -145,8 +192,8 @@ paper table.
 | ViT | Acc ↑ | 0.283 ± 0.005 | **0.305 ± 0.004** | 0.267 ± 0.007 | −5.4% (*p*=0.007) |
 | ResNet | Acc ↑ | 0.221 ± 0.005 | 0.208 ± 0.005 | 0.221 ± 0.002 | −0.3% (*p*=0.90) |
 
-NLP still points the right way, but the gap vs AdamW is not significant.
-ResNet still ties AdamW and beats Adam (*p*=0.003). ViT does not. Diffusion
+The NLP difference from AdamW is not significant. ResNet also has no significant
+difference from AdamW and beats Adam (*p*=0.003). ViT trails AdamW. Diffusion
 did not run: local CelebA was a flat JPEG folder, and `torchvision.datasets.CelebA`
 rejected it for missing annotations.
 
@@ -196,6 +243,7 @@ optimizer = PsiLogic(
     adaptive_tau=True,
     tau_scale=2.0,
     max_cancel=0.05,
+    chaos_warmup=-1,           # -1 = auto: max(500, steps // 20)
     agc_clip=0.0,              # off by default; presets may enable
     grad_centralize=False,
     gamma_T_max=0,             # cosine γ decay over N steps (0 = off)
@@ -210,7 +258,7 @@ from psilogic import PsiLogicNLP, PsiLogicGPT, PsiLogicViT, PsiLogicWhisper, Psi
 optimizer = PsiLogicNLP(model.parameters(), lr=3e-4, gamma_T_max=total_steps)
 optimizer = PsiLogicGPT(model.parameters(), lr=3e-4, gamma_T_max=total_steps)
 optimizer = PsiLogicViT(model.parameters(), lr=1e-3, gamma_T_max=total_steps)
-optimizer = PsiLogicWhisper(model.parameters(), lr=1e-3, gamma_T_max=total_steps)
+optimizer = PsiLogicWhisper(model.parameters(), lr=1e-5, gamma_T_max=total_steps)
 optimizer = PsiLogic.auto(model, total_steps=len(loader) * epochs)
 ```
 
@@ -219,7 +267,7 @@ optimizer = PsiLogic.auto(model, total_steps=len(loader) * epochs)
 | Image classification | `PsiLogicViT` / `vision_defaults` | `1e-3` | ~0.04 | Mild AGC + GC on |
 | NLP fine-tuning | `PsiLogicNLP` / `nlp_defaults` | `3e-4`–`5e-4` | ~0.03 | Set `gamma_T_max=total_steps` |
 | LM from scratch | `PsiLogicGPT` / `gpt_scratch_defaults` | `3e-4` | ~0.02 | No AGC/GC |
-| Audio / Whisper | `PsiLogicWhisper` | `1e-3` | ~0.05 | See `whisper_defaults` |
+| Audio / Whisper | `PsiLogicWhisper` / `whisper_defaults` | `1e-5` | ~0.02 | Gentler on conv front-ends |
 
 ```python
 from psilogic import debug, get_chaos_metrics
@@ -281,10 +329,10 @@ Details: [`benchmark/README.md`](benchmark/README.md).
 
 ## Notes
 
-- API matches Adam/AdamW loops; math adds chaos-gated cancellation. v0.6 bare
-  defaults = no AGC / no grad centralization.
-- Warmup is often less critical (early damping is already strong), but schedulers
-  still work.
+- API matches Adam/AdamW loops; the update is Adam scaled by a chaos-gated
+  `trust` factor. v0.6 bare defaults = no AGC / no grad centralization.
+- Chaos has its own warmup (`chaos_warmup=-1` → `max(500, steps // 20)`); during
+  it `trust = 1`; configured weight decay still applies. LR schedulers work as usual.
 - FairBench wall time with `psilogic[cuda]` on H100 (24 Sep 2026) is 1.02–1.10×
   AdamW. The June 1.2–1.8× figures are the pre-fusion run. A tiny-model
   microbench can still look like ~2×; that is not the FairBench claim.
@@ -293,6 +341,20 @@ Details: [`benchmark/README.md`](benchmark/README.md).
   Use helpers or kwargs. See [CHANGELOG.md](CHANGELOG.md).
 - Contributing / security: [CONTRIBUTING.md](CONTRIBUTING.md),
   [SECURITY.md](SECURITY.md).
+
+## Research documents
+
+The [convergence notes](research/convergence/README.md) include the assumptions,
+proofs, counterexamples and exact scope of the Lean checks. The main result
+covers an Adam configuration with decay and preprocessing disabled, bounded
+observations and a sufficiently small step; it does not certify the benchmark
+presets or prove an advantage over AdamW.
+
+The [combined article](output/pdf/paper_unified.pdf) joins that analysis with
+the empirical paper. Build instructions are in
+[research/unified/README.md](research/unified/README.md).
+The [publication notes](research/publication/README.md) record the editorial
+checks and distinguish them from the original experiment and proof-audit logs.
 
 ## Citation
 

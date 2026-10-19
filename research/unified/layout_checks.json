@@ -1,0 +1,34 @@
+{
+  "pages": 28,
+  "word_boxes": 13469,
+  "outside_page_bounds": [],
+  "heading_pages": {
+    "Convergence Theory and Proofs": [
+      6
+    ],
+    "References": [
+      17,
+      28
+    ],
+    "Formal verification status": [
+      18
+    ],
+    "Evidence and protocol": [
+      20
+    ],
+    "Later partial results": [
+      21
+    ],
+    "Historical reference outcomes": [
+      23
+    ]
+  },
+  "status": "pass",
+  "pdf_sha256": "962a3ea7ae1b6774ff964d08a9c1978cb808ae84d07c2cdd6f42dcfa2735c814",
+  "visual_review": "All 28 pages rendered and inspected in five contact sheets after the editorial rebuild. No clipping or overlap found.",
+  "compiler_overflow_warnings": [],
+  "empirical_tables_unchanged": 13,
+  "empirical_figures_preserved": 3,
+  "proof_blocks_unchanged": 17,
+  "review_record": "../publication/pdf_review.json"
+}

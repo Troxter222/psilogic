@@ -1,19 +1,7 @@
-"""
-PsiLogic v6 — Comprehensive Test Suite
-=======================================
+"""Core optimizer, preset, checkpoint and input-validation tests.
 
-Tests cover:
-  - Basic optimizer correctness (loss decreases)
-  - All four classes: PsiLogic, PsiLogicNLP, PsiLogicGPT, PsiLogicViT
-  - All preset helper functions
-  - Edge cases: zero grad, single param, large batch
-  - State serialization: save/load checkpoint
-  - Hyperparameter validation (invalid inputs must raise)
-  - Lion mode
-  - nlp_param_groups helper
-  - Chaos gating modes: adaptive_tau and absolute
-  - gamma_T_max cosine decay
-  - chaos_warmup behaviour
+Includes loss-decrease checks, edge cases, Lion updates, detector modes,
+cosine gamma decay and chaos warmup.
 """
 
 from __future__ import annotations
@@ -37,9 +25,7 @@ from psilogic import (
 )
 from tests.helpers import run_steps
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 1. Core convergence
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 class TestConvergence:
@@ -81,9 +67,7 @@ class TestConvergence:
         assert final < init
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 2. Parameter groups / preset helpers
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 class TestPresets:
@@ -133,9 +117,7 @@ class TestPresets:
         assert opt is not None
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 3. Hyperparameter validation
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 class TestValidation:
@@ -171,9 +153,7 @@ class TestValidation:
             opt.step()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 4. Chaos gating modes
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 class TestChaosGating:
@@ -232,9 +212,7 @@ class TestChaosGating:
             )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 5. Cosine gamma decay
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 class TestGammaDecay:
@@ -249,9 +227,7 @@ class TestGammaDecay:
         assert final < init
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 6. Edge cases
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 class TestEdgeCases:
@@ -349,9 +325,7 @@ class TestEdgeCases:
             )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 7. Lion mode
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 class TestLionMode:
@@ -362,9 +336,7 @@ class TestLionMode:
         assert final < init
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 8. State serialization
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 class TestCheckpoint:
@@ -425,9 +397,7 @@ class TestCheckpoint:
                 assert key in param_state, f"Missing key '{key}' in optimizer state"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 9. Determinism
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 class TestDeterminism:
@@ -450,9 +420,7 @@ class TestDeterminism:
         assert run() == run(), "Same seed must produce identical loss curves"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 10. Import and version
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 class TestPackage:

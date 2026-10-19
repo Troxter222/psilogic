@@ -1,8 +1,7 @@
-"""Recommended hyperparameter presets for common training tasks.
+"""Shared hyperparameter presets for common training tasks.
 
-This module is the **source of truth** for task knobs. Convenience classes
-(``PsiLogicNLP`` / ``GPT`` / ``ViT`` / ``Whisper``) and FairBench arenas should
-apply these dicts rather than duplicating literals.
+Convenience classes and FairBench arenas use these dictionaries to keep
+their task settings consistent.
 """
 
 from __future__ import annotations
@@ -94,7 +93,7 @@ def vision_defaults(total_steps: int = 0) -> dict[str, Any]:
 
     Pair with ``vit_param_groups`` for transformer-based vision models so
     patch embeddings receive minimal cancellation (γ=0.005) while attention
-    and MLP blocks get the full treatment. Enables AGC + centralize.
+    and MLP blocks use larger gamma values. Enables AGC and centralization.
     """
     return _base_defaults(
         gamma=0.04,
@@ -110,7 +109,7 @@ def vision_defaults(total_steps: int = 0) -> dict[str, Any]:
 def gpt_scratch_defaults(total_steps: int = 0) -> dict[str, Any]:
     """Hyperparameters for language model training from scratch.
 
-    Matches the plain drop-in (no AGC / no grad centralize); FairBench
+    Uses no AGC or gradient centralization; FairBench
     NLP follow-ups showed those extras hurt TinyStories GPT-scratch vs AdamW.
     ``tau_scale=2.0`` matches the constructor default so the soft chaos gate
     can open (``3.0`` left the continuous excess near zero for entire runs).

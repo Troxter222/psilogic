@@ -1,0 +1,79 @@
+{
+  "status": "pass",
+  "scope": "Symbolic algebra and finite floating-point stress checks; not theorem formalization",
+  "seed": 20261016,
+  "exact_checks": {
+    "absorption_margin": "5/16",
+    "final_constants_identity": "9*C*M**2*X/a**2 + 4*C*X + 9*Delta/(a*alpha)",
+    "epsilon_identity": "zero symbolic residual",
+    "young_identity": "(M*r - a*m)**2/(2*a)"
+  },
+  "tracking_cases": 300,
+  "max_noise_energy_ratio": 1.0,
+  "max_drift_energy_ratio": 0.8669750251095409,
+  "dynamic_records": [
+    {
+      "beta": 0.0,
+      "noise": false,
+      "steps": 200,
+      "gradient_energy": 56.772799059323205,
+      "theorem_bound": 2041.7077370099105
+    },
+    {
+      "beta": 0.0,
+      "noise": true,
+      "steps": 200,
+      "gradient_energy": 37.03093678150137,
+      "theorem_bound": 4474.043683390484
+    },
+    {
+      "beta": 0.3,
+      "noise": false,
+      "steps": 200,
+      "gradient_energy": 120.83492996095595,
+      "theorem_bound": 2846.5560299753174
+    },
+    {
+      "beta": 0.3,
+      "noise": true,
+      "steps": 200,
+      "gradient_energy": 35.54972720072925,
+      "theorem_bound": 5585.176105607258
+    },
+    {
+      "beta": 0.9,
+      "noise": false,
+      "steps": 200,
+      "gradient_energy": 277.45890458111376,
+      "theorem_bound": 16679.557642675412
+    },
+    {
+      "beta": 0.9,
+      "noise": true,
+      "steps": 200,
+      "gradient_energy": 290.66873453585765,
+      "theorem_bound": 47958.77323180152
+    },
+    {
+      "beta": 0.99,
+      "noise": false,
+      "steps": 200,
+      "gradient_energy": 249.93716735700494,
+      "theorem_bound": 95977.54615587372
+    },
+    {
+      "beta": 0.99,
+      "noise": true,
+      "steps": 200,
+      "gradient_energy": 468.39681064854943,
+      "theorem_bound": 664123.3807080332
+    }
+  ],
+  "conservative_default_example": {
+    "L": 1.0,
+    "G": 1.0,
+    "a": 0.9499996995837173,
+    "M": 100000000.0,
+    "alpha_upper": 2.6388880543992144e-18
+  }
+}

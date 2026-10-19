@@ -1,4 +1,4 @@
-"""Task-specific PsiLogic subclasses, architecture inference and zero-config."""
+"""Task presets and model-based configuration for PsiLogic."""
 
 from __future__ import annotations
 
@@ -84,7 +84,7 @@ def build_auto_optimizer(
     total_steps: int = 0,
     **overrides: Any,
 ) -> PsiLogic:
-    """Build a fully configured PsiLogic optimizer from a bare model.
+    """Choose a preset and parameter groups for a model.
 
     Used by ``PsiLogic.auto``. Architecture is inferred, the matching preset
     and parameter-group builder applied, and ``overrides`` are passed through
@@ -127,9 +127,8 @@ class PsiLogicNLP(PsiLogic):
     Accepts either a parameter iterable or a full ``nn.Module`` — in the
     latter case ``nlp_param_groups`` is applied automatically.
 
-    Optional convenience over plain ``PsiLogic(...)``: mild AGC, grad
-    centralize, and encoder-friendly gamma / quantum decay. Most users can
-    stay on ``PsiLogic(model.parameters(), lr=...)``.
+    Adds AGC, gradient centralization, and encoder gamma/quantum-decay
+    settings to the plain constructor defaults.
     """
 
     def __init__(
@@ -152,9 +151,9 @@ class PsiLogicGPT(PsiLogic):
     latter case ``gpt_param_groups`` is applied automatically (embeddings
     γ=0.005 with no quantum decay, blocks γ=0.02, LM head γ=0.01).
 
-    Uses the bare GPT-scratch knobs (no AGC / no grad centralize), matching
+    Uses the GPT-scratch settings (no AGC or gradient centralization), matching
     ``PsiLogic(params, lr=...)`` extras. Pass ``agc_clip=...`` /
-    ``grad_centralize=True`` to opt back in. Knobs come from
+    ``grad_centralize=True`` to enable them. Settings come from
     ``gpt_scratch_defaults``.
     """
 

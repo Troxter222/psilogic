@@ -1,9 +1,7 @@
-"""
-PsiLogic optimizer — Active Cancellation extension of Adam.
+"""PsiLogic scales Adam or Lion updates with a gradient-based trust factor.
 
-Extends Adam by damping the *update* in proportion to a continuous chaos
-signal, so steps taken while the model is confused count for less. The signal
-is strongest during unstable training and decays automatically at convergence.
+The chaos detector uses gradient-norm statistics and gradient-momentum
+disagreement to determine how much of each update to withhold.
 """
 
 from __future__ import annotations
@@ -29,9 +27,8 @@ from ._chaos import (
     update_gradient_norm_ema_batched,
 )
 
-# Resolve once at import time. Calling ``getattr(torch.compiler, "is_compiling", …)``
-# inside ``step()`` breaks ``torch.compile(fullgraph=True)`` on PyTorch 2.2.x
-# (Dynamo traces the getattr/hasattr and raises).
+# Import once: looking up is_compiling inside step() breaks Dynamo tracing
+# with torch.compile(fullgraph=True) on PyTorch 2.2.x.
 try:
     from torch.compiler import is_compiling as _is_compiling
 except ImportError:  # pragma: no cover - torch < 2.1
@@ -47,13 +44,8 @@ _FOREACH_OPS = ("mul_", "add_", "addcmul_", "sqrt", "addcdiv_", "norm", "div_")
 _FOREACH_AVAILABLE = all(hasattr(torch, f"_foreach_{op}") for op in _FOREACH_OPS)
 _FOREACH_COPY_AVAILABLE = hasattr(torch, "_foreach_copy_")
 
-# Cached per-(device, dtype) constant-1.0 scalar tensors. These stand in for
-# a per-parameter "no-op" multiplier (chaos/quantum-decay disabled for this
-# param this step) inside torch._foreach_mul_ calls, which only ever *read*
-# the scale tensors. Reusing one shared tensor per (device, dtype) instead of
-# allocating a fresh `torch.tensor(1.0, ...)` for every parameter, every
-# step, removes a large number of small CUDA allocations/kernel launches
-# without changing any computed value.
+# Foreach operations only read these unit multipliers. Share one per device
+# and dtype to avoid allocating a tensor for every undamped parameter each step.
 _ONE_SCALAR_CACHE: dict[tuple[torch.device, torch.dtype], torch.Tensor] = {}
 
 
@@ -111,18 +103,15 @@ def _centralize_grad(grad: torch.Tensor) -> torch.Tensor:
 
 
 def _init_param_state(state: dict[str, Any], param: torch.Tensor) -> None:
-    # Optimizer state is always kept in fp32, even when the parameter itself
-    # is fp16/bf16. Accumulating momentum/variance and the chaos EMAs at low
-    # precision underflows and drifts to NaN over many steps; fp32 state is
-    # the standard mixed-precision-optimizer pattern (as in fused Adam).
+    # Keep moments and detector EMAs in fp32 to limit accumulation errors
+    # when parameters use fp16 or bf16.
     state["t"] = 0
     state["m"] = torch.zeros_like(param, dtype=torch.float32)
     state["v"] = torch.zeros_like(param, dtype=torch.float32)
     state["fast"] = torch.zeros(1, device=param.device, dtype=torch.float32)
     state["slow"] = torch.zeros(1, device=param.device, dtype=torch.float32)
     state["gn_avg"] = torch.zeros(1, device=param.device, dtype=torch.float32)
-    # Last computed soft chaos level. Not an input to the update — kept so
-    # ``debug.chaos_stats`` can report the signal that actually damped it.
+    # Retain the last damping signal for debug.chaos_stats.
     state["soft_chaos"] = torch.zeros(1, device=param.device, dtype=torch.float32)
 
 
@@ -152,7 +141,7 @@ def _copy_chaos_into_packed(
     packed_slow: torch.Tensor,
     packed_gn_avg: torch.Tensor,
 ) -> None:
-    """Copy per-param 1-element chaos tensors into packed ``[N]`` buffers."""
+    """Copy each parameter's chaos scalars into packed ``[N]`` buffers."""
     packed_fast.copy_(torch.cat([s["fast"].reshape(1) for s in states]).to(dtype=packed_fast.dtype))
     packed_slow.copy_(torch.cat([s["slow"].reshape(1) for s in states]).to(dtype=packed_slow.dtype))
     packed_gn_avg.copy_(
@@ -177,10 +166,9 @@ def _bind_packed_chaos_views(
 
 
 def _write_soft_chaos(states: list[dict[str, Any]], soft_vec: Optional[torch.Tensor]) -> None:
-    """Mirror a group's soft-chaos vector back into per-parameter state.
+    """Store a group's soft-chaos values in each parameter's state.
 
-    ``soft_vec is None`` means chaos was inactive this step, so the recorded
-    level is zeroed instead of left stale.
+    Clear the recorded values when ``soft_vec is None`` (damping was inactive).
     """
     targets = [state["soft_chaos"] for state in states]
     if not targets:
@@ -225,37 +213,34 @@ def _as_packed_chaos_vector(states: list[dict[str, Any]], key: str) -> Optional[
 
 class PsiLogic(Optimizer):
     r"""
-    Active Cancellation optimizer for deep neural networks.
+    Adam or Lion with chaos-dependent update damping.
 
-    Combines Adam (or Lion sign-momentum) with a chaos detector that withholds
-    part of each update while the model looks confused. Chaos is measured
-    continuously from two signals — the fast/slow EMA ratio of the gradient
-    norm, and how much the fresh gradient disagrees with its own momentum —
-    and turned into a ``trust`` factor that scales the Adam/Lion step. Weight
-    decay stays decoupled and independent of chaos, exactly as in AdamW.
+    The detector combines the fast/slow EMA ratio of the gradient norm with
+    gradient-momentum disagreement. The resulting ``trust`` factor scales the
+    update. Weight decay is decoupled and does not depend on the detector.
 
-    All chaos hyperparameters are valid per param-group overrides, including
-    ``lion_mode`` — e.g. ViT transformer blocks can run Lion updates while
-    patch embeddings stay on Adam (see ``vit_param_groups(lion_blocks=True)``).
+    Parameter groups can override detector settings and ``lion_mode``. For
+    example, ``vit_param_groups(lion_blocks=True)`` selects Lion for transformer
+    blocks and Adam for patch embeddings.
 
     Args:
         params: Iterable of parameters or parameter groups.
         lr: Learning rate. Default: ``1e-3``.
         betas: Adam EMA coefficients ``(β₁, β₂)``. Default: ``(0.9, 0.999)``.
         weight_decay: Decoupled L₂ penalty (AdamW style). Default: ``1e-4``.
-        gamma: Largest fraction of an update that may be withheld when the
-            model is maximally confused. Default: ``0.05``.
+        gamma: Damping coefficient, scaled by ``p_ext`` and the chaos signal.
+            Cancellation is capped by ``max_cancel``. Default: ``0.05``.
         p_ext: Chaos amplification factor. Default: ``1.0``.
         quantum_decay: Secondary decay coefficient applied while chaos is
             *low*; ``0.0`` disables. Default: ``0.0``.
         eps: Numerical stability epsilon. Default: ``1e-8``.
-        grad_centralize: Subtract spatial mean from gradients. Default: ``False``
-            (plain drop-in). Opt in with ``True``, or use a task preset such as
-            ``PsiLogicViT`` / ``vision_defaults``.
+        grad_centralize: Subtract spatial mean from gradients. Default: ``False``.
+            Some task presets enable this.
         chaos_tau: Slow-EMA scale that saturates the gate when ``adaptive_tau=False``.
         chaos_warmup: Warmup steps before chaos activates; ``-1`` auto-scales
-            to ``max(500, gamma_T_max // 20)``. Chaos then ramps in linearly
-            over a quarter of the warmup window instead of switching on hard.
+            to ``max(500, gamma_T_max // 20)`` when the horizon is positive,
+            otherwise 200 steps. Damping then ramps up linearly over a quarter
+            of the warmup window (at least one step).
         adaptive_tau: Drive the gate from the fast/slow ratio instead of the
             absolute norm.
         tau_scale: Fast/slow ratio at which the adaptive gate saturates.
@@ -270,8 +255,8 @@ class PsiLogic(Optimizer):
         use_fused_cuda: Triton fused CUDA step when CUDA and Triton are available.
             Falls back to ``use_foreach`` then scalar automatically.
         lion_mode: Sign-momentum (Lion) update instead of Adam. Default: ``False``.
-        gamma_auto: Auto-reduce γ when the slow EMA signals convergence
-            (``slow < 0.1``). Default: ``False``.
+        gamma_auto: Reduce γ when the slow EMA falls below ``0.1``.
+            Default: ``False``.
         sync_chaos_ddp: All-reduce (mean) the fast/slow chaos signals across
             DDP ranks before applying cancellation, so every rank damps
             identically. No-op outside an initialized process group.
@@ -338,10 +323,6 @@ class PsiLogic(Optimizer):
         self.last_step_time_ms: float = 0.0
         self.step_time_ms_ema: Optional[float] = None
 
-    # ------------------------------------------------------------------ #
-    # Zero-config construction
-    # ------------------------------------------------------------------ #
-
     @classmethod
     def auto(
         cls,
@@ -350,7 +331,7 @@ class PsiLogic(Optimizer):
         total_steps: int = 0,
         **overrides: Any,
     ) -> PsiLogic:
-        """Zero-config constructor: infer preset and param groups from ``model``.
+        """Choose a preset and parameter groups from the model architecture.
 
         Architecture is detected from module types and parameter names
         (ViT / GPT / NLP encoder / CNN / generic) and the matching preset and
@@ -361,10 +342,6 @@ class PsiLogic(Optimizer):
         from .convenience import build_auto_optimizer
 
         return build_auto_optimizer(cls, model, lr=lr, total_steps=total_steps, **overrides)
-
-    # ------------------------------------------------------------------ #
-    # Checkpointing (schema v2 with v0.3-monolith migration)
-    # ------------------------------------------------------------------ #
 
     def state_dict(self) -> dict[str, Any]:
         """Return the optimizer state tagged with the PsiLogic schema version."""
@@ -378,11 +355,9 @@ class PsiLogic(Optimizer):
     def load_state_dict(self, state_dict: dict[str, Any]) -> None:
         """Load optimizer state, migrating pre-v0.4 (schema v1) checkpoints.
 
-        v1 checkpoints (the v0.3 monolith) lack newer per-group keys such as
-        ``gamma_auto``; those are filled from the current defaults. Missing
-        chaos-state tensors are re-initialized to a neutral value — the EMAs
-        renormalize within a handful of steps and shrinkage stays bounded by
-        ``max_cancel`` throughout.
+        Fill missing group settings, such as ``gamma_auto``, from current
+        defaults. Missing ``fast``/``slow`` tensors start at one;
+        ``gn_avg`` and ``soft_chaos`` start at zero.
         """
         state_dict = dict(state_dict)
         schema = state_dict.pop(_STATE_DICT_SCHEMA_KEY, 1)
@@ -420,21 +395,11 @@ class PsiLogic(Optimizer):
                     if key not in state:
                         state[key] = torch.ones(1, device=param.device, dtype=torch.float32)
 
-    # ------------------------------------------------------------------ #
-    # DDP chaos synchronization
-    # ------------------------------------------------------------------ #
-
     def _maybe_sync_chaos_batched(self, fast_vec: torch.Tensor, slow_vec: torch.Tensor) -> None:
-        """All-reduce (mean) stacked fast/slow chaos EMAs across DDP ranks.
+        """Average a group's packed fast/slow EMAs across DDP ranks.
 
-        Equivalent to :meth:`_maybe_sync_chaos` but takes the already-stacked
-        per-group vectors instead of a list of per-parameter state dicts.
-        Every rank builds the ``[fast_0..fast_n, slow_0..slow_n]`` layout in
-        the same (deterministic) parameter order, so summing per-position
-        across ranks gives the exact same reduced values as the original
-        per-parameter ``cat``/``all_reduce``/``copy_`` sequence — only the
-        in-tensor layout (block vs. interleaved) differs, which has no
-        effect on an elementwise sum-then-divide reduction.
+        Pack fast values before slow values for a single all-reduce.
+        Parameter order must match across ranks.
         """
         if not self._sync_chaos_ddp:
             return
@@ -465,10 +430,6 @@ class PsiLogic(Optimizer):
             state["fast"].copy_(flat[2 * i])
             state["slow"].copy_(flat[2 * i + 1])
 
-    # ------------------------------------------------------------------ #
-    # Update math
-    # ------------------------------------------------------------------ #
-
     def _apply_decay_and_trust(
         self,
         param: torch.Tensor,
@@ -490,11 +451,9 @@ class PsiLogic(Optimizer):
     ) -> Optional[torch.Tensor]:
         """Apply decoupled weight decay and return the chaos ``trust`` factor.
 
-        Weight decay is always AdamW-style and independent of chaos; chaos
-        now withholds part of the *update* (see :meth:`_adam_or_lion_update`)
-        instead of shrinking the weights, which is what made the old
-        cancellation term indistinguishable from extra weight decay.
-        ``None`` means "no damping this step".
+        Weight decay is independent of chaos. Optional quantum decay uses
+        the chaos signal; ``trust`` scales the subsequent Adam or Lion update.
+        Return ``None`` when damping is inactive.
         """
         if wd > 0:
             param.mul_(1.0 - lr * wd)
@@ -551,8 +510,8 @@ class PsiLogic(Optimizer):
             bc2 = math.sqrt(1.0 - beta2**step)
             step_size = lr * bc2 / bc1
             denom = state["v"].sqrt().add_(eps)
-            # Inflating the denominator is the allocation-free way to scale
-            # ``m / denom`` by ``trust``: m / (denom / trust) == trust * m / denom.
+            # Scale the update through the denominator without allocating it:
+            # m / (denom / trust) == trust * m / denom.
             if trust is not None:
                 denom.div_(trust)
             param.addcdiv_(state["m"], denom, value=-step_size)
@@ -576,8 +535,7 @@ class PsiLogic(Optimizer):
         lion = group["lion_mode"]
         gamma_auto_on = group["gamma_auto"]
 
-        # Phase 1 (prepare): grad processing, momentum update, and the
-        # gradient-norm EMA update for every parameter in the group.
+        # Prepare gradients and moments before synchronizing the detector.
         prepared: list[
             tuple[
                 torch.Tensor,
@@ -607,9 +565,8 @@ class PsiLogic(Optimizer):
             step = state["t"]
             g_norm = grad.norm()
 
-            # Must be read before the momentum update: the signal is how much
-            # the fresh gradient disagrees with *accumulated* momentum. Only
-            # worth the extra reductions when chaos can actually damp.
+            # Compare against the previous momentum, before updating it.
+            # Skip the reductions when damping is inactive.
             gamma_sched, _ = effective_gamma_and_qd(step, gamma_t_max, gamma, qd)
             chaos_gain = effective_warmup(step, gamma_t_max, warmup_cfg)
             disagree = None
@@ -635,11 +592,10 @@ class PsiLogic(Optimizer):
         if not prepared:
             return
 
-        # Phase 2 (sync): one batched all-reduce for the whole group instead
-        # of one all-reduce per parameter.
+        # Synchronize the group's detector EMAs in one collective.
         self._maybe_sync_chaos([state for (_, _, _, state, _, _) in prepared])
 
-        # Phase 3 (finalize): chaos-conditioned decay and the Adam/Lion update.
+        # Apply decay and the damped Adam or Lion update.
         for param, raw_grad, grad, state, step, disagree in prepared:
             gamma_eff, qd_eff = effective_gamma_and_qd(step, gamma_t_max, gamma, qd)
             if gamma_auto_on:
@@ -724,18 +680,12 @@ class PsiLogic(Optimizer):
         ms = [s["m"] for s in states]
         vs = [s["v"] for s in states]
 
-        # Always recompute the norm directly from the final (post-AGC,
-        # post-centralize) gradient tensor, exactly like `_step_scalar`'s
-        # `grad.norm()`. The previous `g_norms * clip_factors` shortcut here
-        # (valid only in exact arithmetic: ||c*x|| == c*||x||) saved one
-        # `_foreach_norm` call but rounds differently from `(c*x).norm()` in
-        # low precision, which desynced the fast/slow chaos EMA from the
-        # scalar reference path under bf16/fp16.
+        # Recompute norms after AGC and centralization to match the scalar path.
+        # Scaling the old norms rounds differently in fp16/bf16 and changes
+        # the detector EMAs.
         g_norms_vec = torch.stack(torch._foreach_norm(grads))
 
-        # Grad-vs-momentum disagreement has to be read while ``m`` still
-        # holds the previous step's value, so it comes before the moment
-        # update below (the gradients themselves are untouched by it).
+        # Measure disagreement before updating the previous step's momentum.
         chaos_possible = any(
             effective_warmup(step, gamma_t_max, warmup_cfg) > 0.0
             and effective_gamma_and_qd(step, gamma_t_max, gamma, qd)[0] > 0
@@ -904,8 +854,7 @@ class PsiLogic(Optimizer):
 
                 denoms = torch._foreach_sqrt(vs)
                 torch._foreach_add_(denoms, eps)
-                # Same trick as the scalar path: inflating the denominator by
-                # 1/trust scales the Adam step without materializing it.
+                # Apply trust through the denominator, as in the scalar path.
                 if trusts:
                     torch._foreach_div_(denoms, trusts)
                 if uniform_step:
@@ -928,10 +877,9 @@ class PsiLogic(Optimizer):
         compiling = _is_compiling()
 
         for group in self.param_groups:
-            # Path selection must not read ``Parameter.grad``: Dynamo on
-            # PyTorch 2.2.x raises ``Unsupported: tensor grad`` even when
-            # ``is_compiling()`` returns False during tracing. Device checks
-            # alone are enough — foreach/fused skip params with ``grad is None``.
+            # Avoid reading Parameter.grad during path selection: Dynamo on
+            # PyTorch 2.2.x can raise "Unsupported: tensor grad" here.
+            # Each update path skips parameters without gradients.
             if compiling:
                 self._step_scalar(group)
                 continue

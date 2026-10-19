@@ -1,9 +1,7 @@
 """Typed configuration objects for the FairBench benchmark.
 
-All experiment knobs live here as ``dataclass`` instances so that a run is
-fully described by a single serializable object. This keeps experiments
-reproducible (the config is logged verbatim to CSV / W&B) and keeps the
-rest of the codebase free of scattered magic numbers.
+Dataclasses collect the configured experiment settings for serialization and
+logging to CSV or W&B. Resolved runtime details may need separate records.
 """
 
 from __future__ import annotations
@@ -13,9 +11,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-# --------------------------------------------------------------------------- #
 # Canonical names. Using constants avoids silent typos across the codebase.
-# --------------------------------------------------------------------------- #
 
 OPTIMIZERS: tuple[str, ...] = ("adam", "adamw", "lion", "psilogic")
 ARENAS: tuple[str, ...] = ("nlp", "vit", "resnet", "diffusion")
@@ -29,8 +25,8 @@ class SweepConfig:
     """Stage-1 learning-rate sweep settings.
 
     The sweep runs each optimizer for a short budget and selects the LR that
-    minimizes validation loss. This is what removes per-optimizer *tuning
-    bias*: every optimizer is given the same opportunity to find its best LR.
+    minimizes validation loss. Every optimizer uses the same candidate grid
+    and sweep budget; this does not equalize all hyperparameter tuning effort.
     """
 
     #: Log-spaced grid of candidate learning rates (inclusive endpoints).

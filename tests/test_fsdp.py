@@ -1,27 +1,11 @@
 """FSDP optimizer checkpoint, resharding, and restart tests (requires 2+ CUDA devices).
 
-The existing test_fsdp.py smoke test only runs three optimizer steps under
-FSDP and never touches serialization. This file adds the coverage issue #28
-asks for:
+Checks save/load round-trips, local shards, loading across different FSDP
+wrapping topologies, and training after a restart (issue #28). A run without
+restart provides the reference trajectory.
 
-  * optimizer state serialization under FSDP (save/load round-trip)
-  * sharded state-dict handling (each rank's local shard, not just the
-    rank0-only full/consolidated view)
-  * resharding: loading a checkpoint saved under one FSDP wrapping topology
-    into a model wrapped with a *different* topology (different unit
-    boundaries -> different per-rank shard shapes), which is the scenario
-    that silently breaks naive checkpointing code
-  * restart behavior: tear down the in-memory model/optimizer, rebuild fresh
-    ones, load the checkpoint, and verify training continues consistently
-    with a reference run that never restarted
-
-All of this uses ``torch.distributed.checkpoint`` (DCP) with the
-``get_state_dict``/``set_state_dict`` helpers from
-``torch.distributed.checkpoint.state_dict``, which is the currently
-recommended, resharding-safe way to checkpoint FSDP + optimizer state
-(as opposed to the older ``FSDP.optim_state_dict`` + ``StateDictType``
-context-manager pattern, which does not reconcile differing wrap
-topologies on load).
+Checkpoints use ``torch.distributed.checkpoint`` with its
+``get_state_dict`` and ``set_state_dict`` helpers.
 """
 
 from __future__ import annotations

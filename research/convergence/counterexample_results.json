@@ -1,0 +1,66 @@
+{
+  "scope": "Finite exact-algebra and CPU implementation checks; not convergence proofs or GPU validation",
+  "python": "3.13.13",
+  "torch": "2.13.0+cu130",
+  "cuda_available": false,
+  "source": "/mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/psilogic/optimizer.py",
+  "C1": {
+    "passed": true,
+    "exact_orbit": [
+      "3/8",
+      "-3/8",
+      "3/8",
+      "-3/8"
+    ],
+    "mean_gradient_squared": "9/64"
+  },
+  "C2": {
+    "passed": true,
+    "exact_mean_normalized_gradient": "-79990/101101",
+    "expected_objective_increase": 0.01194787143968657,
+    "first_step_soft_chaos": 0.1866287738084793
+  },
+  "C3": {
+    "passed": true,
+    "positive_branch_trust": 0.2332550287246704,
+    "negative_branch_trust": 0.8118326365947723,
+    "conditional_mean_trust_times_gradient": -0.4973943442106247,
+    "rigorous_upper_bound": "-463/2000",
+    "conditional_expected_objective_increase": 0.04708454411153086
+  },
+  "C4": {
+    "passed": true,
+    "steps_per_mode": 20,
+    "modes": [
+      "Adam",
+      "Lion"
+    ],
+    "gradient_norm_squared": 2
+  },
+  "C5": {
+    "passed": true,
+    "clipped_gradients": [
+      1.0,
+      -1.0
+    ],
+    "exact_mean_clipped": "-4/5"
+  },
+  "C6": {
+    "passed": true,
+    "initial_minimizer": 2.0,
+    "next_parameter": 1.9,
+    "objective_increase": 0.005000000000000009
+  },
+  "C7": {
+    "passed": true,
+    "zero_epsilon_produces_nan": true,
+    "negative_p_ext_trust": 6.0
+  },
+  "backend_rms_rounding": {
+    "passed": true,
+    "scalar_dtype": "torch.float16",
+    "batched_dtype": "torch.float32",
+    "scalar_value": 0.5771484375,
+    "batched_value": 0.5773502588272095
+  }
+}

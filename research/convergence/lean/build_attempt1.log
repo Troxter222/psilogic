@@ -1,0 +1,27 @@
+Command: /tmp/lean-4.19.0-linux/bin/lake env lean -DautoImplicit=false /mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/research/convergence/lean/PsiLogic.lean
+Working directory: /tmp/psilogic-mathlib
+Runtime: Lean (version 4.19.0, x86_64-unknown-linux-gnu, commit 6caaee842e94, Release)
+Mathlib commit: c44e0c8ee63ca166450922a373c7409c5d26b00b
+Source SHA256: c36426b6c3794087e3bd0fc2d455c357bf42e518f92bb8eeb6043fb5974d7719
+
+/mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/research/convergence/lean/PsiLogic.lean:20:4: error: failed to compile definition, consider marking it as 'noncomputable' because it depends on 'Real.instDivInvMonoid', and it does not have executable code
+/mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/research/convergence/lean/PsiLogic.lean:66:5: warning: unused variable `hq`
+note: this linter can be disabled with `set_option linter.unusedVariables false`
+/mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/research/convergence/lean/PsiLogic.lean:71:2: warning: Used `tac1 <;> tac2` where `(tac1; tac2)` would suffice
+note: this linter can be disabled with `set_option linter.unnecessarySeqFocus false`
+/mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/research/convergence/lean/PsiLogic.lean:74:61: warning: unused variable `hs`
+note: this linter can be disabled with `set_option linter.unusedVariables false`
+/mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/research/convergence/lean/PsiLogic.lean:77:2: warning: Used `tac1 <;> tac2` where `(tac1; tac2)` would suffice
+note: this linter can be disabled with `set_option linter.unnecessarySeqFocus false`
+'PsiLogic.trust_bounds' depends on axioms: [propext, Classical.choice, Quot.sound]
+'PsiLogic.trust_floor' depends on axioms: [propext, Classical.choice, Quot.sound]
+'PsiLogic.normalized_ema_bound' depends on axioms: [propext, Classical.choice, Quot.sound]
+'PsiLogic.ema_interval' depends on axioms: [propext, Classical.choice, Quot.sound]
+'PsiLogic.bias_epsilon_identity' depends on axioms: [propext, Classical.choice, Quot.sound]
+'PsiLogic.trust_denominator_identity' depends on axioms: [propext, Classical.choice, Quot.sound]
+'PsiLogic.scalar_descent' depends on axioms: [propext, Classical.choice, Quot.sound]
+'PsiLogic.finite_descent_sum' depends on axioms: [propext, Classical.choice, Quot.sound]
+'PsiLogic.weighted_stationarity_certificate' depends on axioms: [propext, Classical.choice, Quot.sound]
+'PsiLogic.average_stationarity_bound' depends on axioms: [propext, Classical.choice, Quot.sound]
+
+Exit status: 1

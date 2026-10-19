@@ -1,0 +1,12 @@
+{
+  "status": "pass",
+  "pages": 16,
+  "word_boxes_checked": 8462,
+  "outside_page_bounds": [],
+  "compiler_overflows_or_unresolved_references": [],
+  "pdf_matches_build_hash": true,
+  "lean_source_matches_checked_hash": true,
+  "pdf_sha256": "9c3439bf96dda3a32bf913397880b209100ead1371c94a96e8b493a72ee9c3ad",
+  "extraction_note": "Control characters from math-font text extraction removed only for bbox metadata parsing; PDF unchanged.",
+  "visual_review": "All 16 pages inspected in rendered contact sheets; updated final pages 14-16 additionally inspected at full page size. No clipping, overlap, missing symbols, or layout defects found."
+}

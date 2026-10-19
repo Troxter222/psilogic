@@ -1,0 +1,21 @@
+{
+  "status": "complete_with_explicit_mathematical_limitations",
+  "manuscript_pages": 16,
+  "latex_build": "pass",
+  "pdf_visual_review": "pass",
+  "recurrence_cases": 34,
+  "recurrence_comparisons": 47380,
+  "algebra_tracking_cases": 300,
+  "algebra_dynamic_trajectories": 8,
+  "counterexample_checks": "C1-C7 passed; backend RMS rounding demonstrated",
+  "existing_tests": {
+    "passed": 72,
+    "skipped": 16,
+    "skip_reason": "CUDA/Triton execution unavailable"
+  },
+  "lean_kernel_checked_declarations": 10,
+  "full_convergence_formalized": false,
+  "package_source_files_unchanged": 14,
+  "revision": "b4917163d63d8a5cb2960e29af4b1bccdbf5798d",
+  "scope": "Restricted exact-real Adam configuration; complete conditional proofs and explicit counterexamples. No unconditional default-mode or persistent-noise guarantee; no AdamW superiority claim."
+}

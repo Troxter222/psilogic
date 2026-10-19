@@ -6,6 +6,22 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Convergence manuscript, explicit assumptions, counterexamples, implementation
+  traces, and recorded numerical and Lean checks.
+- September H100 result snapshot and scripts for regenerating the empirical
+  tables, figures, and combined article from saved measurements.
+
+### Changed
+
+- Clarified optimizer comments and API documentation without changing update
+  equations, defaults, or executable code.
+- Prepared research Markdown for GitHub and documented the scope of AI-assisted
+  checks separately from external peer review and Lean verification.
+- Updated the roadmap with the September results and excluded local lockfiles
+  and PDF build intermediates from publication.
+
 ## [0.6.0] — 2026-08-26
 
 ### Changed

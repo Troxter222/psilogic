@@ -1,25 +1,24 @@
 #!/usr/bin/env python3
-"""Follow-up NLP suite: bare extras + soft tau (does cancel actually help?).
+"""NLP follow-up: separate preprocessing effects from cancellation settings.
 
-Hypothesis from the big 39-cell sweep
+Hypotheses from the 39-cell sweep
 -------------------------------------
 * Default GPT-scratch PsiLogic loses to AdamW mostly because of AGC +
   ``grad_centralize``, not because of chaos cancel.
 * With ``tau_scale=3`` the adaptive gate almost never opens (fast/slow ≈ 1),
   so gamma / max_cancel / p_ext ablations were bit-identical.
 * ``combo_bare`` (agc=0, centralize=False) was the only significant win on the
-  paper-like setup; ``tiny_model`` was a huge win.
+  paper-like setup; ``tiny_model`` showed a larger improvement.
 
-This script tests the natural next cells **without changing library defaults**:
+The follow-up comparisons leave library defaults unchanged:
 
 * paper setup × bare × tau_scale ∈ {1.2, 1.5, 2.0, 3.0}
 * bare + mild gamma variants
-* long_ctx × default vs bare vs bare+soft-tau  (was catastrophic)
+* long_ctx × default vs bare vs bare+soft-tau (a poor result in the earlier sweep)
 * tiny_model × default vs bare vs bare+soft-tau
 * controls: paper_default, bare_only, soft_tau_only (isolate factors)
 
-Also reports mean ``psi/spike_rate`` / ``fast−slow`` so you can see whether
-the cancel gate actually opened.
+Also reports mean ``psi/spike_rate`` and ``fast−slow`` to track detector activity.
 
 Examples
 --------
@@ -70,11 +69,9 @@ from fairbench.metrics import paired_ttest  # noqa: E402
 from fairbench.runner import BenchmarkRunner  # noqa: E402
 
 
-# --------------------------------------------------------------------------- #
 # Presets (overrides on top of NLPArena GPT-scratch base)
-# --------------------------------------------------------------------------- #
 
-# Proven win from the big sweep.
+# Settings that improved the measured result in the earlier sweep.
 _BARE: dict[str, Any] = {"agc_clip": 0.0, "grad_centralize": False}
 
 
@@ -311,9 +308,7 @@ def all_experiments() -> dict[str, Experiment]:
     return out
 
 
-# --------------------------------------------------------------------------- #
 # FairBench glue
-# --------------------------------------------------------------------------- #
 
 
 def build_config(
@@ -582,9 +577,7 @@ def ensure_tinystories(data_root: str, *, offline: bool, synthetic: bool) -> Non
     print(f"TinyStories ready: {root}/tinystories/")
 
 
-# --------------------------------------------------------------------------- #
 # Reporting
-# --------------------------------------------------------------------------- #
 
 
 def print_table(results: list[ExpResult]) -> None:
@@ -702,9 +695,7 @@ def write_markdown(results: list[ExpResult], path: Path) -> None:
     print(f"Wrote Markdown: {path}")
 
 
-# --------------------------------------------------------------------------- #
 # CLI
-# --------------------------------------------------------------------------- #
 
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:

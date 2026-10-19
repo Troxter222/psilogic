@@ -1,0 +1,10 @@
+{
+  "status": "kernel_checked",
+  "exit_code": 0,
+  "contains_placeholder_axiom": false,
+  "runtime": "Lean (version 4.19.0, x86_64-unknown-linux-gnu, commit 6caaee842e94, Release)",
+  "mathlib_commit": "c44e0c8ee63ca166450922a373c7409c5d26b00b",
+  "source_sha256": "5bad4cf9056206a911de172799d563faa29b21774e7ff6cf49eb4b0c6ff043b0",
+  "theorem_count": 10,
+  "scope": "Scalar algebra and finite sums under explicit assumptions; not full optimizer or stochastic convergence."
+}

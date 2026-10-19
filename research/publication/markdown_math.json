@@ -1,0 +1,21 @@
+{
+  "status": "pass",
+  "files": [
+    {
+      "path": "research/convergence/algorithm_specification.md",
+      "mathematical_payloads_preserved": 90
+    },
+    {
+      "path": "research/convergence/backend_trace.md",
+      "mathematical_payloads_preserved": 32
+    },
+    {
+      "path": "research/convergence/counterexamples.md",
+      "mathematical_payloads_preserved": 110
+    },
+    {
+      "path": "research/convergence/independent_review.md",
+      "mathematical_payloads_preserved": 138
+    }
+  ]
+}

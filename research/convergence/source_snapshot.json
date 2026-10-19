@@ -1,0 +1,23 @@
+{
+  "revision": "b4917163d63d8a5cb2960e29af4b1bccdbf5798d",
+  "date_local": "2026-10-15",
+  "timezone": "Asia/Tashkent",
+  "git_status_excluding_research": " M .gitignore\n M PAPER.md\n M README.md\n M arxiv/paper.tex\n M scripts/build_arxiv_pdf.py\n?? arxiv/figures/later_quality.pdf\n?? arxiv/figures/later_quality.png\n?? arxiv/figures/reference_learning_curves.pdf\n?? arxiv/figures/reference_learning_curves.png\n?? arxiv/figures/wall_time_snapshots.pdf\n?? arxiv/figures/wall_time_snapshots.png\n?? arxiv/generated/\n?? benchmark/results/fused_h100/\n?? output/\n?? scripts/paper_results.py\n?? scripts/render_paper.py\n?? uv.lock\n",
+  "source_sha256": {
+    "psilogic/__init__.py": "1e3ba0a28ff38bb16ef00caae51e1f8bf802f3e815784013f895e9d94764850a",
+    "psilogic/_chaos.py": "bc66d6c4fb96ee2ec47adc265a4de378686c2f9a5a0c740df1d7cd8c9aff3ec5",
+    "psilogic/_cuda/__init__.py": "6ae4b76fbbcbbed1ecb6a6ff8bb73b0498b1738fcef192ee386c26c1bc640a3f",
+    "psilogic/_cuda/kernels.py": "da9d1bf7c1172cf4e1f4b1037a1b4727c7bccc48566f1ee84e5ac3367583500f",
+    "psilogic/_cuda/step.py": "91f3a0ae0385410ab288cadc24b350f4e81741088042e446c82baa8d3938dcd4",
+    "psilogic/_version.py": "510326ef9cf2c6fb7c02ce6de55a98f867217f6c0acda71366345b02e485db8f",
+    "psilogic/convenience.py": "4f0736a9ad45f6e934235ab0487085289c7197a3b85c698e156c283fdf88d79d",
+    "psilogic/debug.py": "e31f8e4fd5c037aa12e3458b5ec56b6ade5da1f18dcfc4a14d4aea3edb7a6038",
+    "psilogic/integrations/__init__.py": "86ae9f286d3fe03a82357c2a49f9d04e1ae0767fc46227f81a368b01c9cfc1ef",
+    "psilogic/integrations/hf.py": "b93d5604c7e7571a5efd36c4ddfd1d753c32859dd73831cd26b13e01c68d8485",
+    "psilogic/integrations/lightning.py": "3825984e93404db646d2478a7f30b4762e80ddbdd0a1488042f6602a117a38d9",
+    "psilogic/optimizer.py": "d6d94716bac5d14a9b461778fada799e159ff3c478fb4a82393b99e5d45766a3",
+    "psilogic/param_groups.py": "643d0d9aed94a254bb07c84f9cb864109fa4360f4f84e0ce8017582eb2a0abb8",
+    "psilogic/presets.py": "544ad6c16be9645ca4cf916b83990fa8ad958f6a6d6b4eaf846be30e6ba67423"
+  },
+  "source_scope": "psilogic/ is local import/package root; build/lib is generated separate tree; no canonical files modified."
+}

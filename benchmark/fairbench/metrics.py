@@ -19,9 +19,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 import torch
 
-# --------------------------------------------------------------------------- #
 # Hardware profiling
-# --------------------------------------------------------------------------- #
 
 
 def cuda_sync(device: Optional[torch.device] = None) -> None:
@@ -70,9 +68,7 @@ def peak_vram_mb(device: Optional[torch.device] = None) -> float:
     return 0.0
 
 
-# --------------------------------------------------------------------------- #
 # Result records
-# --------------------------------------------------------------------------- #
 
 
 @dataclass
@@ -153,9 +149,7 @@ class CSVLogger:
                 writer.writerow(row)
 
 
-# --------------------------------------------------------------------------- #
 # Statistics
-# --------------------------------------------------------------------------- #
 
 
 @dataclass

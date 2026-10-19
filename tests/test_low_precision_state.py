@@ -1,11 +1,7 @@
 """Tests for numerically safe optimizer state on low-precision parameters.
 
-The AMP test in test_amp.py only exercises FP32 parameters under autocast,
-where the optimizer never actually sees FP16 tensors. This file covers the
-case the issue describes directly: parameters whose own dtype is FP16/BF16,
-which previously received FP16/BF16 momentum, variance, and chaos state.
-No GPU is required since the underlying bug and fix are dtype-based, not
-device-based.
+Unlike the autocast tests, these use FP16/BF16 parameters directly and check
+that moments and detector state remain FP32. The dtype checks run on CPU.
 """
 
 from __future__ import annotations

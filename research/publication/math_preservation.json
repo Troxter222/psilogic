@@ -1,0 +1,13 @@
+{
+  "status": "pass",
+  "theory_blocks_byte_identical": {
+    "theorem": 2,
+    "lemma": 4,
+    "proposition": 8,
+    "corollary": 3,
+    "assumption": 2,
+    "definition": 1,
+    "proof": 17
+  },
+  "empirical_markdown_unchanged": true
+}

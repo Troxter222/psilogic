@@ -1,0 +1,8 @@
+{
+  "status": "pass",
+  "package_files_checked": 14,
+  "changed_package_files": [],
+  "revision_unchanged": true,
+  "nonresearch_git_status_unchanged": true,
+  "limitation": "Git status comparison checks paths/status; package files additionally checked byte-for-byte by SHA256."
+}

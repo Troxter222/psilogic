@@ -26,9 +26,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from .logging_utils import LOGGER
 
-# --------------------------------------------------------------------------- #
 # Paths
-# --------------------------------------------------------------------------- #
 
 TINYSTORIES_SUBDIR = "tinystories"
 CIFAR100_DIR = "cifar-100-python"
@@ -167,9 +165,7 @@ def require_local(name: str, ready: bool, data_root: str, offline: bool) -> None
     )
 
 
-# --------------------------------------------------------------------------- #
 # TinyStories cache (small, upload-friendly)
-# --------------------------------------------------------------------------- #
 
 
 def save_tinystories_cache(

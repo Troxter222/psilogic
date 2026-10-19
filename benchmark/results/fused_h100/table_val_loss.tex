@@ -1,0 +1,14 @@
+\begin{table}[t]
+\centering
+\caption{Final val loss (mean $\pm$ std over seeds). Best per arena in \textbf{bold}; stars mark psilogic significance (\textsuperscript{*}$p<0.05$, \textsuperscript{**}$p<0.01$, \textsuperscript{***}$p<0.001$).}
+\label{tab:val_loss}
+\begin{tabular}{lcccc}
+\toprule
+Arena & Adam & Adamw & Lion & Psilogic \\
+\midrule
+nlp & 2.626 $\pm$ 0.004 & 2.104 $\pm$ 0.024 & 3.019 $\pm$ 0.064 & \textbf{2.098 $\pm$ 0.020\textsuperscript{***}} \\
+resnet & 3.813 $\pm$ 0.009 & \textbf{3.456 $\pm$ 0.009} & 3.509 $\pm$ 0.023 & 3.467 $\pm$ 0.008\textsuperscript{***} \\
+vit & 3.880 $\pm$ 0.002 & 2.886 $\pm$ 0.013 & \textbf{2.764 $\pm$ 0.011} & 2.973 $\pm$ 0.017\textsuperscript{***} \\
+\bottomrule
+\end{tabular}
+\end{table}

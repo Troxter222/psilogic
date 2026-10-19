@@ -1,605 +1,569 @@
-\documentclass[11pt]{article}
-
-\usepackage[margin=1in]{geometry}
-\usepackage[T1]{fontenc}
+\documentclass[11pt,a4paper]{article}
+% Generated from PAPER.md. Edit the Markdown source.
+\usepackage[margin=25mm]{geometry}
 \usepackage[utf8]{inputenc}
-\usepackage{lmodern}
-\usepackage{microtype}
-\usepackage{amsmath,amssymb,amsfonts}
-\usepackage{graphicx}
-\usepackage{booktabs}
-\usepackage{tabularx}
-\usepackage{multirow}
-\usepackage{enumitem}
-\usepackage{hyperref}
-\usepackage{xcolor}
-\usepackage{listings}
-\usepackage{caption}
-\usepackage{subcaption}
-
-\hypersetup{
-  colorlinks=true,
-  linkcolor=blue!60!black,
-  citecolor=blue!60!black,
-  urlcolor=blue!60!black,
-}
-
-\newcommand{\cmark}{$\checkmark$}
-\newcommand{\xmark}{$\times$}
-\newcommand{\arxivcomment}[1]{\textcolor{gray}{\small #1}}
-
-\DeclareMathOperator{\relu}{relu}
-
-\lstset{
-  basicstyle=\ttfamily\small,
-  breaklines=true,
-  frame=single,
-  framesep=4pt,
-  backgroundcolor=\color{gray!8},
-  showstringspaces=false,
-  commentstyle=\color{gray!60!black}\itshape,
-  morecomment=[l]{\#},
-}
-
-\title{%
-  \textbf{PsiLogic: Chaos-Aware Active Cancellation for Adam\\
-  with a Fair Cross-Domain Benchmark}%
-}
-\author{%
-  \textbf{Ali Sultonov}\\
-  Independent Researcher\\
-  \texttt{troxtergrif@gmail.com}\\
-  \url{https://github.com/Troxter222/psilogic}%
-}
+\usepackage{amsmath,amssymb,graphicx,booktabs,tabularx,array}
+\usepackage{xcolor,hyperref,fancyvrb,enumitem}
+\hypersetup{colorlinks=true,linkcolor=blue!50!black,urlcolor=blue!50!black}
+\setlength{\emergencystretch}{3em}
+\setlength{\parskip}{4pt}
+\title{PsiLogic: Chaos-Aware Active Cancellation for Adam with a Fair Cross-Domain Benchmark}
+\author{\textbf{Ali Sultonov}\\Independent Researcher\\troxtergrif@gmail.com\\\url{https://github.com/Troxter222/psilogic}}
 \date{}
-
 \begin{document}
 \maketitle
+\textbf{Original publication:} arXiv:2607.16268v1 [cs.LG], first submitted 5 July 2026. \url{https://arxiv.org/pdf/2607.16268}.
+
+\textbf{Article DOI:} \url{https://doi.org/10.48550/arXiv.2607.16268}.
+
+Local revision of the original preprint: implementation and empirical audit, revised 15 October 2026. Audited software version: 0.6.0.
 
 \begin{abstract}
-Adam and AdamW apply one update rule whether early gradients are noisy or the run
-has already settled. We introduce \textbf{PsiLogic} ($\Psi$Logic), which adds a
-dynamic Active Cancellation term to Adam. The term is gated by a dual exponential
-moving average (EMA) of scale-normalized gradient norms. This chaos detector
-increases damping when those statistics are unstable and fades to zero as training
-settles, so early steps are damped without a separate warmup schedule.
 
-We compare PsiLogic with Adam, AdamW, and Lion under \textbf{FairBench}. Each
-optimizer gets its own learning-rate sweep, runs that share a seed start from the
-same initialization, and differences are Welch $t$-tests. On an NVIDIA H100 80GB
-reference run (4 arenas, 3 seeds, 2000 steps, bf16 AMP), PsiLogic has the best
-validation metric on NLP perplexity and ViT accuracy, beats Adam on ResNet (the
-gap vs.\ AdamW is not significant), and ties Adam/AdamW on diffusion.
-NLP perplexity is $7.79 \pm 0.18$ vs.\ $8.17 \pm 0.08$ (AdamW, $p = 0.049$);
-ViT top-1 is $0.244 \pm 0.006$ vs.\ $0.223 \pm 0.002$ (AdamW, $p = 0.015$);
-ResNet top-1 is $0.222 \pm 0.001$ vs.\ Adam $0.172 \pm 0.004$ ($p = 0.001$) and
-AdamW $0.219 \pm 0.005$ ($p = 0.44$, n.s.); diffusion MSE is
-$0.02009 \pm 0.00045$ vs.\ $0.01987 \pm 0.00006$ ($p = 0.49$, n.s.). Peak GPU
-memory is similar across optimizers. On the June 2026 H100 run, before Triton
-fusion, wall time was 1.2--1.8$\times$ AdamW (Section~\ref{sec:limitations}).
-Package v0.5+ includes an optional fused CUDA backend with the same update. A
-fused FairBench re-run is not in this preprint.
+PsiLogic multiplies an Adam-style update by a bounded, tensor-specific trust factor. The factor combines changes in a normalized gradient norm with disagreement between the current gradient and previous momentum. We state the equations implemented in the current source, including preprocessing, bias correction, epsilon placement, warmup, and optional update modes. Here, ``chaos'' names a gradient statistic; it is not a claim about mathematical chaos or a direct measurement of training instability.
 
-The PyTorch implementation, the FairBench harness, and the raw CSV outputs are public.
+We reassess two saved H100 benchmark snapshots. The four-task reference snapshot favors PsiLogic in mean NLP perplexity and ViT accuracy. The later partial snapshot gives a different picture: NLP perplexity is 8.15 \(\pm\) 0.16 for PsiLogic and 8.20 \(\pm\) 0.20 for AdamW; ViT accuracy is 26.72 \(\pm\) 0.67\% and 28.25 \(\pm\) 0.47\%; ResNet accuracy is 22.08 \(\pm\) 0.23\% and 22.14 \(\pm\) 0.52\%. Recorded run wall time in the later snapshot is 1.099\(\times\), 1.024\(\times\), and 1.038\(\times\) AdamW, respectively. No later diffusion outcome is available. These are run-time ratios; a separate saved optimizer-only microbenchmark reports a fused-step ratio of 2.27\(\times\) AdamW. The snapshots use different software versions and selected learning rates, so their difference does not isolate kernel fusion. We report seed-paired tests with an explicit Holm correction and retain the older results separately. No new training was performed for this revision. The evidence supports modest full-run overhead in the later workloads, but does not establish a general quality advantage over AdamW or validate every historical outcome for the current implementation.
 
-\medskip
-\noindent\textbf{Keywords:} optimization, Adam, adaptive learning rate, deep learning, reproducibility
 \end{abstract}
 
-\section{Introduction}
+\section{Motivation and scope}
 
-The optimizer changes how fast a model converges, how stable the run is, and often
-the final metric. Adam~\cite{kingma2015adam} and AdamW~\cite{loshchilov2019adamw} are
-what most training code uses. Their update does not depend on whether the current
-gradient statistics look unstable or already quiet. At initialization gradients are
-large and noisy; near convergence they are small. Adam applies the same kind of step
-in both cases.
+Adam already adapts its update through running gradient moments [2]. PsiLogic asks a narrower question: can a small additional reduction of each tensor's update help when recent gradient statistics change or its gradient opposes accumulated momentum? It keeps Adam's coordinate-wise preconditioner and adds one scalar multiplier per tensor. Tensors can receive different damping even when they share a learning rate.
 
-\textbf{PsiLogic} adds a chaos-conditioned damping term to the Adam update. The term
-is largest when a dual EMA of normalized gradient norms indicates a spike, and it
-goes to zero on its own as training settles. It is a drop-in for
-\texttt{torch.optim.Adam}, with optional task presets
-(\texttt{PsiLogicNLP}, \texttt{PsiLogicGPT}, \texttt{PsiLogicViT}).
+This motivation does not establish better training. A gradient opposing momentum may contain useful information, and damping it may slow progress. A sudden norm increase may also be meaningful rather than harmful. We treat the detector as a heuristic rather than calling it a reliable measure of confusion or convergence.
 
-\paragraph{Contributions.}
-\begin{enumerate}[leftmargin=*, itemsep=2pt]
-  \item Chaos-gated Active Cancellation on Adam, with unified decay and optional
-    gradient centralization (GC) and adaptive gradient clipping (AGC).
-  \item FairBench: a per-optimizer LR sweep, identical weights per seed, four task
-    arenas, and Welch $t$-tests.
-  \item A reference H100 run. CSVs and learning curves are in
-    \texttt{benchmark/results/full/}. Ties and non-significant comparisons are in
-    the tables, not only the wins.
+This manuscript revises the original PsiLogic preprint [1], first submitted to arXiv on 5 July 2026. The arXiv paper is the primary scholarly reference for PsiLogic. This local revision makes the current update explicit and reports what the saved measurements support, including unfavorable outcomes. These are distinct evidence: run metadata does not identify exact training commits or serialize every resolved optimizer setting. Equations describe the audited source; tables describe named CSV snapshots. We cannot certify that an archived run executed every equation of today's implementation.
+
+\section{Relation to existing optimizers}
+
+Adam maintains first and second moments and corrects their initialization bias [2]. AdamW separates parameter decay from the gradient direction [3]. PsiLogic follows that separation: ordinary decay acts on parameters, while cancellation scales the optimizer update. Optional Lion mode uses a sign-momentum direction [4] with the same trust factor. This is a tensor-level effective learning-rate adjustment, not a curvature estimate or replacement for an external schedule.
+
+Gradient centralization and adaptive gradient clipping are optional preprocessing operations. They change the gradients used by both optimizer and detector. Results with these options enabled measure the full configuration and cannot isolate cancellation's contribution. We make no claim of priority over all gradient-dependent learning-rate methods and provide no convergence theorem.
+
+\section{The implemented algorithm}
+
+\subsection{State and preprocessing}
+
+Let $i$ identify a tensor in parameter group $k$, and $n_i$ its number of elements. Its counter $t$ starts at 1 and advances only when that tensor has a gradient. A skipped tensor receives no moment, detector, or decay update. Thus $t$ need not equal the global step. Let $\eta_{k,t}$ be the trainer-supplied learning rate, $\lambda_k$ the decoupled decay coefficient, and $\epsilon$ the numerical stabilizer. We suppress group indices on other settings. Parameter-shaped products, squares, square roots, and divisions are elementwise.
+
+Let $h_{i,t}$ be the gradient received by the optimizer, after trainer-side unscaling, accumulation, or global clipping. Tensor-wise adaptive gradient clipping (AGC) with coefficient $a>0$ gives
+
+\[
+\widetilde g_{i,t}=h_{i,t}\min\left(1,\frac{a\max(\|\theta_{i,t}\|_2,10^{-3})}{\max(\|h_{i,t}\|_2,10^{-6})}\right).
+\]
+
+For $a\leq0$, $\widetilde g=h$. Enabled gradient centralization, on tensors with more than one dimension, gives
+
+\[
+g_{i,t}=\widetilde g_{i,t}-\operatorname{mean}_{d=1,\ldots,D_i-1}(\widetilde g_{i,t}).
+\]
+
+Otherwise $g=\widetilde g$. Reduced dimensions remain for broadcasting; the first dimension is not averaged. Moments and detector use $g$. Secondary decay uses $\widetilde g$ before centralization. AGC reads parameters before decay. State is FP32 even with \path{FP16/BF16} parameters. Equations specify arithmetic, not bitwise equality across devices or dtypes.
+
+\subsection{Normalized gradient statistics}
+
+The root-mean-square gradient magnitude is
+
+\[
+u_{i,t}=\frac{\|g_{i,t}\|_2}{\sqrt{\max(n_i,1)}}.
+\]
+
+Initialize $A_{i,1}=u_{i,1}$ and dimensionless averages $F_{i,1}=S_{i,1}=1$. For $t>1$,
+
+\[
+\begin{aligned}
+A_{i,t}&=0.99A_{i,t-1}+0.01u_{i,t},\\
+r_{i,t}&=u_{i,t}/(A_{i,t}+\epsilon),\\
+F_{i,t}&=0.90F_{i,t-1}+0.10r_{i,t},\\
+S_{i,t}&=0.99S_{i,t-1}+0.01r_{i,t}.
+\end{aligned}
+\]
+
+The ratio uses newly updated $A$. Averages advance during warmup and with cancellation disabled. They track relative magnitude, not gradient variance. Normalization approximately removes constant gradient rescaling when epsilon is negligible; it is not exact scale invariance near numerical zero.
+
+\subsection{Continuous signal and trust}
+
+With momentum before the current update denoted by $m_{i,t-1}$, set disagreement $D_{i,1}=0$. Subsequently,
+
+\[
+\begin{aligned}
+c_{i,t}&=\operatorname{clip}\left(\frac{\langle m_{i,t-1},g_{i,t}\rangle}{\|m_{i,t-1}\|_2\|g_{i,t}\|_2+\epsilon},-1,1\right),\\
+D_{i,t}&=\tfrac12(1-c_{i,t}).
+\end{aligned}
+\]
+
+Epsilon is inside the cosine denominator. After the first update, zero momentum or zero gradient gives $D=1/2$, not the first-step value. With $\sigma(x)=1/(1+e^{-x})$, adaptive scale $\tau_s$ and fixed setting $\tau_c$, define
+
+\[
+E_{i,t}=\begin{cases}
+\sigma\left(\dfrac{4}{\max(\tau_s-1,0.25)}\left(\dfrac{F_{i,t}}{S_{i,t}+\epsilon}-1\right)\right),&\text{adaptive},\\
+\sigma\left(4\left(\dfrac{S_{i,t}}{\max(\tau_c,\epsilon)}-1\right)\right),&\text{fixed}.
+\end{cases}
+\]
+
+Fixed mode also uses normalized slow state, not a raw-norm threshold. When the cancellation path is active,
+
+\[
+C_{i,t}=\tanh(S_{i,t})\left(\tfrac12 E_{i,t}+\tfrac12 D_{i,t}\right).
+\]
+
+With warmup gain $w$, effective gamma $\gamma$, amplification $P_k$, and $b=\min(b_0,0.99)$,
+
+\[
+T_{i,t}=1-\min(C_{i,t}\gamma_{i,t}P_k w_{i,t},b).
+\]
+
+For intended nonnegative amplification, $1-b\leq T\leq1$. Default $b_0=0.05$ gives $T\geq0.95$. The code clamps cancellation only from above and does not reject negative amplification; these bounds assume $P_k\geq0$.
+
+If gain or effective gamma is zero, the path is inactive: trust is 1 and the stored soft signal is zero. This is an inactive marker, not a measurement of quiet gradients. Equal fast and slow state does not close the gate: their ratio near 1 gives $E\approx1/2$. With $S\approx1$ and aligned gradients, $C\approx\tanh(1)/4\approx0.1904$. Gamma 0.05, amplification 1, and full gain then yield about 0.95\% damping. Stable directions and small absolute gradients do not guarantee zero cancellation; a limit such as $S\to0$ does force the active signal to zero.
+
+\subsection{Schedules and warmup}
+
+For configured horizon $H$, the common gamma and secondary-decay schedule is
+
+\[
+z_t=\begin{cases}\tfrac12[1+\cos(\pi\min(t/H,1))],&H>0,\\1,&H=0.\end{cases}
+\]
+
+Set $\gamma_t^{\rm sched}=\gamma_0z_t$ and $q_t=q_0z_t$. Optional automatic gamma multiplies scheduled gamma by $\max(S_{i,t}/0.1,0.1)$ when $t>1$ and $S_{i,t}<0.1$, and leaves it unchanged otherwise. This option is off by default and is not a convergence test.
+
+Automatic chaos warmup gives $W=\max(500,\lfloor H/20\rfloor)$ for $H>0$, or 200 for $H=0$. An explicitly supplied nonnegative length overrides it. With $R=\max(1,\lfloor W/4\rfloor)$,
+
+\[
+w_{i,t}=\begin{cases}0,&t\leq W,\\\min(1,(t-W)/R),&t>W.\end{cases}
+\]
+
+Warmup zero activates the path on the first update. The bare constructor with unknown horizon waits 200 updates, then ramps for 50. This is separate from trainer LR warmup. Each tensor's counter drives both internal schedules.
+
+\subsection{Adam update, epsilon, and decay}
+
+Starting with $m_{i,0}=v_{i,0}=0$,
+
+\[
+\begin{aligned}
+m_{i,t}&=\beta_1m_{i,t-1}+(1-\beta_1)g_{i,t},\\
+v_{i,t}&=\beta_2v_{i,t-1}+(1-\beta_2)g_{i,t}^{\odot2}.
+\end{aligned}
+\]
+
+Ordinary decay multiplies parameters by $1-\eta_{k,t}\lambda_k$. If $q_t>0$ and cancellation is active ($w>0$, $\gamma>0$), secondary decay adds
+
+\[
+\rho_{i,t}=1-\eta_{k,t}q_tw_{i,t}(1-C_{i,t})\tanh(|\widetilde g_{i,t}|).
+\]
+
+Otherwise $\rho=1$. The API calls this option quantum\_decay; it has no quantum-mechanical interpretation and is disabled by default. Both decay factors act before the optimizer direction:
+
+\[
+\boxed{\theta_{i,t+1}=\rho_{i,t}(1-\eta_{k,t}\lambda_k)\theta_{i,t}
+-\eta_{k,t}\frac{\sqrt{1-\beta_2^t}}{1-\beta_1^t}\,T_{i,t}\frac{m_{i,t}}{\sqrt{v_{i,t}}+\epsilon}.}
+\]
+
+With bias-corrected moments $\widehat m=m/(1-\beta_1^t)$ and $\widehat v=v/(1-\beta_2^t)$, the direction is
+
+\[
+\frac{T_{i,t}\widehat m_{i,t}}{\sqrt{\widehat v_{i,t}}+\epsilon/\sqrt{1-\beta_2^t}}.
+\]
+
+Replacing that denominator with $\sqrt{\widehat v}+\epsilon$ changes the algorithm. For $\beta_2=0.999$, first-update effective epsilon is about $31.62\epsilon$. With all extras disabled, this is AdamW-style arithmetic with that convention, not exact algebraic identity to usual PyTorch AdamW. Tolerance-based equivalence checks do not prove exact equality.
+
+\subsection{Lion and distributed execution}
+
+Optional Lion mode gives
+
+\[
+\begin{aligned}
+d_{i,t}&=\operatorname{sign}(\beta_1m_{i,t-1}+(1-\beta_1)g_{i,t}),\\
+\theta_{i,t+1}&=\rho_{i,t}(1-\eta_{k,t}\lambda_k)\theta_{i,t}-\eta_{k,t}T_{i,t}d_{i,t},\\
+m_{i,t}&=\beta_2m_{i,t-1}+(1-\beta_2)g_{i,t}.
+\end{aligned}
+\]
+
+Disagreement still uses previous momentum. Lion has no Adam bias correction. The shared initializer allocates a second-moment buffer, but it does not enter this update.
+
+Optional distributed detector synchronization averages $F,S$ across ranks after their local update and before computing the signal. It does not explicitly synchronize $A$ or disagreement. Averaging $F,S$ cannot guarantee identical trust if ranks differ in gradients, momentum, counters, or settings. Ordinary DDP with matching reduced gradients and state is the intended setting.
+
+\subsection{Execution order, defaults, and source map}
+
+\begin{enumerate}[itemsep=2pt]
+\item Skip tensors without gradients; apply optional AGC, then centralization.
+\item Increment active tensor counters; when cancellation can activate, compute disagreement against previous momentum.
+\item Update Adam moments in Adam mode and norm averages in both modes.
+\item Optionally average \path{fast/slow} state across distributed ranks.
+\item Resolve effective gamma, signal, and trust. Apply ordinary decay, then active secondary decay.
+\item Apply the direction; update Lion momentum after constructing its direction.
 \end{enumerate}
 
-Diffusion ties Adam/AdamW. ResNet vs.\ AdamW is not significant at three seeds.
-Step time on the June 2026 run is slower than AdamW
-(Section~\ref{sec:limitations}).
+Bare defaults are LR 0.001, betas (0.9, 0.999), decay 0.0001, epsilon 1e-8, gamma 0.05, amplification 1, cap 0.05, adaptive thresholding, tau scale 2, and automatic chaos warmup. AGC, centralization, secondary decay, automatic gamma, Lion, and detector synchronization are off. CUDA foreach and fused execution are requested by default with availability-dependent fallback. CPU and compilation use the scalar implementation. Presets and parameter groups can override these settings.
 
-\section{Related Work}
-\label{sec:related}
+API mapping: $A,F,S$ are gn\_avg, fast, slow; $C$ is soft\_chaos; $P_k$ is p\_ext; $b_0$ is max\_cancel; $\tau_s,\tau_c$ are tau\_scale, chaos\_tau; $H$ is gamma\_T\_max; $q_0$ is quantum\_decay; $a$ is agc\_clip. Preprocessing and update order are in \path{psilogic/optimizer.py}; detector helpers in \path{psilogic/_chaos.py}; accelerated execution in \path{psilogic/_cuda/step.py} and kernels.py. Backends target the same rule, with possible precision and reduction-order differences. Software checks cannot establish which source a historical run executed.
 
-\paragraph{Adaptive first-order methods.}
-Adam~\cite{kingma2015adam} keeps bias-corrected first- and second-moment estimates and
-uses them as per-parameter rates. AdamW~\cite{loshchilov2019adamw} splits weight decay
-out of the gradient step. That is the usual setup for Transformers.
-AdaFactor~\cite{shazeer2018adafactor} cuts memory with factored second-moment estimates.
-Lion~\cite{chen2023lion} uses a sign update and coupled weight decay. It uses less
-memory, and it often needs its own LR.
+\section{Evidence and protocol}
 
-\paragraph{Large-batch and layer-wise scaling.}
-LARS~\cite{you2017lars} and LAMB~\cite{you2019lamb} rescale updates by the ratio of
-parameter norm to gradient norm, which is what makes very large minibatches trainable.
-They fix scale mismatch across layers. They do not turn damping on and off from online
-gradient volatility.
+\subsection{Snapshots and provenance}
 
-\paragraph{Second-order and curvature-aware methods.}
-Shampoo~\cite{gupta2018shampoo} and Sophia~\cite{liu2023sophia} use richer curvature
-or Hessian information. That can converge faster, and it costs more per step. PsiLogic
-stays in the first-order Adam family and adds only scalar chaos statistics, shared
-across parameters.
+The reference is \path{benchmark/results/full}; the later partial snapshot is \path{benchmark/results/fused_h100.} Means and sample SD are recalculated from summaries and checked against aggregate CSVs. Each reported combination has successful runs for seeds 0, 1, and 2. The later summary has only NLP, ViT, and ResNet, although its configuration requests diffusion. A requested task without outcomes is not a completed experiment.
 
-\paragraph{Automatic learning-rate and warmup.}
-Manual LR warmup~\cite{goyal2017large} is standard for large-batch SGD and Transformers.
-Hypergradient descent~\cite{baydin2017hypergrad} differentiates through the optimizer to adapt
-the LR online. Recent \emph{parameter-free} methods such as D-Adaptation~\cite{defazio2023dadapt}
-and Prodigy~\cite{mishchenko2023prodigy} estimate a suitable global step size from observed
-gradients. PsiLogic's version of the early-phase effect is chaos-driven implicit warmup:
-damping rises when gradient statistics are unstable and fades without an external schedule.
+Both configs specify H100 80GB HBM3, batch 64, BF16 AMP, global clipping at 1, cosine LR with 100 warmup steps, seven log-spaced LR candidates from 1e-5 to 1e-2, sweep limits of 500 steps or 5 epochs, and evaluation limits of 2000 steps or 10 epochs. The loop stops at the applicable step or epoch limit. These are configured budgets: absent later step histories, we cannot confirm every later run completed 2000 updates.
 
-\paragraph{Stability mechanisms.}
-Gradient centralization~\cite{yong2020gc} and adaptive gradient
-clipping~\cite{brock2021nfn} are the usual extra stabilizers. PsiLogic can use both.
-Active cancellation is a different knob: it shrinks weights when chaos is high, rather
-than only rescaling or clipping gradients.
+Arena definitions describe a small GPT on TinyStories, ViT on CIFAR-100, ResNet-18 on Tiny ImageNet, and \path{DDPM/UNet} diffusion on CelebA. Metadata does not fully serialize historical architecture, transforms, or resolved optimizer arguments. ViT also has a package-dependent model fallback; future runs should record the actual architecture.
 
-\paragraph{Optimizer evaluation.}
-A shared learning rate is a common way one optimizer looks better than it is.
-FairBench gives each optimizer its own LR search.
+The reference environment is PyTorch 2.4.1+\path{cu124/CUDA} 12.4; the later environment is 2.8.0+\path{cu128/CUDA} 12.8. Later ViT peak allocation is about 5497 MiB for PsiLogic, compared with roughly 1229 MiB in the reference. These changes and different selected rates prevent a controlled backend-only comparison. The later directory name indicates a fusion evaluation, but the config lacks per-run backend records. We report outcomes, not a verified kernel trace.
 
-\section{Method}
+\subsection{Statistics}
 
-\subsection{Notation and Per-Group Hyperparameters}
+For this audit, we select one primary outcome per arena: NLP perplexity, vision accuracy, and diffusion MSE. NLP learning-rate selection in the harness uses validation loss; exponentiating loss preserves outcome ordering but does not preserve the paired t-test statistic. Two-sided seed-paired tests compare the audit's selected outcomes. Holm correction covers all arena-by-baseline primary comparisons within each snapshot: 12 reference tests and 9 later tests. This family differs from the reference's saved unpaired Welch tests and the later saved analyzer's per-arena, multiple-metric family. Original significance files remain unchanged; new results are written separately.
 
-PsiLogic works on parameter groups indexed by $k$. Each group has a learning rate $\eta$,
-AdamW weight decay $\lambda$, chaos gain $\gamma$, and a chaos amplification factor
-$P_k \ge 0$ (called \texttt{p\_ext} in the code, default $1.0$). Presets use $P_k$ to put
-more cancellation on some groups (embeddings, for example) and less on others, without
-changing the global chaos signal. $\mathbf{g}_t = \nabla_\theta \mathcal{L}$ is the gradient
-at step $t$. $w_t \in [0,1]$ is the chaos warmup weight (Section~\ref{sec:warmup}).
+Tables give raw and adjusted p-values. Three pairs leave two degrees of freedom, and normality of differences cannot be meaningfully assessed. This retrospective analysis was not preregistered. Failure to reject does not establish equivalence; significance does not establish usefulness. Pairing assumes matching seed labels represent matched conditions, as intended by the harness. CSVs alone cannot verify initialization or data order.
 
-\subsection{Update Rule}
+\subsection{Timing definition}
 
-Each step applies unified multiplicative decay, then the bias-corrected Adam step.
-The composed update is
-\begin{equation}
-  \theta_{t+1}
-  = \theta_t \cdot (1 - \delta_t)
-    - \eta \cdot \frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \varepsilon}\,,
-  \label{eq:update}
-\end{equation}
-where $\hat{m}_t$ and $\hat{v}_t$ are the usual bias-corrected Adam moments (the hat means
-the same thing in Listing~\ref{lst:psilogic}) and $\delta_t$ is the unified-decay coefficient
-(Section~\ref{sec:decay}). Listing~\ref{lst:psilogic} is that sequence in code order.
+Saved final wall time covers the training loop, periodic evaluation, and final evaluation. It excludes preparation, LR selection, and \path{model/optimizer} construction. The current harness synchronizes step timing; exact historical behavior needs the missing source revisions. Ratios divide mean run times, not optimizer-only times or individual seed ratios. The optional optimizer host profiler is asynchronous on CUDA and cannot replace synchronized GPU measurements. No time-to-target-quality claim is made.
 
-\subsection{Chaos Detector}
+\section{Later partial results}
 
-Let $\mathrm{gn}_t = \|\mathbf{g}_t\|_2 / \sqrt{\mathrm{numel}}$ be the scale-normalized gradient norm. We maintain:
-\begin{align}
-\mathrm{fast}_t &= 0.90 \cdot \mathrm{fast}_{t-1} + 0.10 \cdot \mathrm{gn}_t \\
-\mathrm{slow}_t &= 0.99 \cdot \mathrm{slow}_{t-1} + 0.01 \cdot \mathrm{gn}_t \\
-\mathrm{ratio}_t &= \mathrm{fast}_t / (\mathrm{slow}_t + \varepsilon) \\
-\mathrm{chaos}_t &= \tanh(\mathrm{slow}_t) \cdot \bigl(1 + 0.5 \cdot \tanh(\relu(\mathrm{ratio}_t - 1))\bigr)
-\end{align}
-The fast and slow EMAs have effective horizons of about $10$ and $100$ steps.
-In adaptive mode (the default), cancellation turns on when $\mathrm{fast}_t > \tau_{\mathrm{scale}} \cdot \mathrm{slow}_t$
-($\tau_{\mathrm{scale}} = 2.0$). That is a relative spike, not a threshold on the raw gradient.
-As $\mathrm{slow}_t \to 0$ at convergence, $\mathrm{chaos}_t \to 0$, and PsiLogic reduces toward
-AdamW-like behavior.
+\subsection{Quality}
 
-\subsection{Unified Decay}
-\label{sec:decay}
+\noindent\begin{minipage}{\linewidth}
+Table 1. Later primary metrics, mean \(\pm\) sample SD over three seeds. Accuracy is a fraction. Bold marks the best observed mean, not significance.\par
+\begin{center}
+\small
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
+\toprule
+\textbf{Primary metric} & \textbf{Adam} & \textbf{AdamW} & \textbf{Lion} & \textbf{PsiLogic} \\
+\midrule
+NLP perplexity (lower) & 13.81 \(\pm\) 0.06 & 8.20 \(\pm\) 0.20 & 20.50 \(\pm\) 1.29 & \textbf{8.15 \(\pm\) 0.16} \\
+ViT accuracy (higher) & 0.1169 \(\pm\) 0.0030 & 0.2825 \(\pm\) 0.0047 & \textbf{0.3049 \(\pm\) 0.0036} & 0.2672 \(\pm\) 0.0067 \\
+ResNet accuracy (higher) & 0.1710 \(\pm\) 0.0042 & \textbf{0.2214 \(\pm\) 0.0052} & 0.2075 \(\pm\) 0.0049 & 0.2208 \(\pm\) 0.0023 \\
+\bottomrule
+\end{tabularx}
+\end{center}
 
-If weight decay and active cancellation are applied as two multiplications,
-$\theta(1-\eta\lambda)$ then $\theta(1-c_t)$, the product is
-$(1-\eta\lambda)(1-c_t)$, which is $1 - \eta\lambda - c_t$ only to first order.
-At large early-step rates the cross term $-\eta\lambda c_t$ over-damps the weights.
-PsiLogic uses one coefficient per step instead.
+\end{minipage}\par
+\noindent\begin{minipage}{\linewidth}
+Table 2. Validation losses from the same later runs, descriptive secondary outcomes.\par
+\begin{center}
+\small
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
+\toprule
+\textbf{Validation loss} & \textbf{Adam} & \textbf{AdamW} & \textbf{Lion} & \textbf{PsiLogic} \\
+\midrule
+NLP & 2.626 \(\pm\) 0.004 & 2.104 \(\pm\) 0.024 & 3.019 \(\pm\) 0.064 & 2.098 \(\pm\) 0.020 \\
+VIT & 3.880 \(\pm\) 0.002 & 2.886 \(\pm\) 0.013 & 2.764 \(\pm\) 0.011 & 2.973 \(\pm\) 0.017 \\
+RESNET & 3.813 \(\pm\) 0.009 & 3.456 \(\pm\) 0.009 & 3.509 \(\pm\) 0.023 & 3.467 \(\pm\) 0.008 \\
+\bottomrule
+\end{tabularx}
+\end{center}
 
-Define the chaos warmup weight $w_t \in [0,1]$ (ramps from 0 during an initial warmup window;
-Section~\ref{sec:warmup}) and the per-group spike mask $s_t \in \{0,1\}$ from the chaos gate.
-The raw cancellation fraction before clamping is
-\begin{equation}
-  \tilde{c}_t = s_t \cdot \mathrm{chaos}_t \cdot \eta \cdot \gamma \cdot P_k.
-  \label{eq:raw-cancel}
-\end{equation}
-We clamp and add weight decay:
-\begin{equation}
-  \delta_t = \eta \lambda + w_t \cdot \min\!\bigl(\tilde{c}_t,\; c_{\max}\bigr),
-  \qquad c_{\max} = \texttt{max\_cancel}
-  \label{eq:delta}
-\end{equation}
-which is the $\delta_t$ used in Eq.~\eqref{eq:update}. $\eta\lambda$ is the AdamW decay;
-$w_t \cdot \min(\tilde{c}_t, c_{\max})$ is chaos-gated cancellation scaled by $P_k$;
-$c_{\max}$ (default 0.05) caps per-step shrinkage while initialization is still volatile.
-Optional cosine schedules on $\gamma$ are supported via \texttt{gamma\_T\_max}.
+\end{minipage}\par
+The NLP mean is about 0.6\% below AdamW, much smaller than the reference gap of about 4.7\%; the later paired test does not detect an advantage. ViT trails AdamW by about 1.54 percentage points and Lion by about 3.77. ResNet differs from AdamW by about -0.06 points. After the nine-test Holm correction, the ViT loss against AdamW remains detectable (adjusted p = 0.0294), whereas NLP and ResNet differences do not. The later timing results cannot be presented as preserving the earlier ViT advantage.
 
-\paragraph{Optional quantum decay.}
-Let $q_0 \ge 0$ denote the \texttt{quantum\_decay} hyperparameter (default $q_0 = 0$ disables the feature).
-When $q_0 > 0$, an effective rate $q_t$ is cosine-scheduled over training alongside $\gamma$
-via \texttt{gamma\_T\_max} (the same schedule helper used for $\gamma$).
-After computing $\delta_t$ but before the Adam subtraction in Listing~\ref{lst:psilogic}, each coordinate
-is multiplied by
-\begin{equation}
-  \rho_{t,i} = 1 - \eta\, q_t\, w_t\, (1 - s_t)\, \tanh\!\bigl(|g_{t,i}|\bigr),
-  \label{eq:quantum-rho}
-\end{equation}
-but only when $s_t = 0$, so auxiliary gradient-dependent regularization does not stack with
-active cancellation on spike steps. FairBench presets use $q_0 = 0$ unless noted.
-
-\subsection{Chaos Warmup}
-\label{sec:warmup}
-
-For \texttt{chaos\_warmup}$=-1$, the warmup horizon auto-scales as
-$\max(500,\, T/20)$ over $T$ training steps. While $t \le t_{\mathrm{warm}}$, $w_t=0$; then
-$w_t$ ramps linearly to $1$ over $t_{\mathrm{warm}}/4$ steps. This prevents the chaos term from firing on raw from-scratch gradient noise.
-
-\subsection{Algorithm}
-
-\begin{lstlisting}[caption={PsiLogic (simplified; matches Eqs.~\ref{eq:delta}, \ref{eq:update}).},
-                    label={lst:psilogic}]
-for t = 1 ... T:
-    grad <- nabla L(theta); optionally apply AGC and gradient centralization
-    update Adam moments m, v; update fast_t, slow_t from ||grad||_2
-    s_t <- spike mask from chaos gate
-    c_t <- min(s_t * chaos_t * eta * gamma * P_k, max_cancel)
-    delta <- eta*lambda + w_t*c_t
-    theta <- theta * (1 - delta)          # unified decay
-    # optional quantum decay when q_0 > 0:
-    theta <- theta * (1 - eta*q_t*w_t*(1-s_t)*tanh(abs(grad)))
-    theta <- theta - eta * m_hat / (sqrt(v_hat) + eps)   # Adam step
-\end{lstlisting}
-Full implementation: \url{https://github.com/Troxter222/psilogic} (\texttt{psilogic/optimizer.py}).
-
-\subsection{Comparison with Baselines}
-
-\begin{table}[t]
-  \centering
-  \caption{Feature comparison of optimizers.}
-  \label{tab:features}
-  \small
-  \begin{tabular}{lcccc}
-    \toprule
-    Property & Adam & AdamW & Lion & \textbf{PsiLogic} \\
-    \midrule
-    Per-parameter adaptive rates & \cmark & \cmark & \xmark & \cmark \\
-    Unified decay (with chaos) & \xmark & \xmark & \xmark & \cmark \\
-    Chaos-aware damping & \xmark & \xmark & \xmark & \cmark \\
-    Implicit early-phase damping & \xmark & \xmark & \xmark & \cmark \\
-    Batched \texttt{foreach} CUDA kernels & partial & \cmark & \xmark & \cmark \\
-    \bottomrule
-  \end{tabular}
-\end{table}
-
-\section{FairBench Evaluation}
-
-\subsection{Protocol and Arenas}
-
-All headline numbers are from one run on an NVIDIA H100 80GB HBM3
-(PyTorch 2.4.1+cu124, CUDA 12.4). The config is
-\texttt{benchmark/results/full/config.json}. FairBench has two stages:
-(1)~a per-optimizer LR sweep over 7 log-spaced rates from $10^{-5}$ to $10^{-2}$
-(500 steps each); (2)~evaluation at the selected LR for 2000 steps, seeds $\{0,1,2\}$,
-identical initialization. Shared settings: batch 64, bf16 AMP, grad clip 1.0, cosine LR,
-100-step warmup. Four arenas: NLP (Small GPT / TinyStories), ViT-Tiny on CIFAR-100,
-ResNet-18 on Tiny ImageNet, and DDPM on CelebA $64^2$.
-The full protocol and arena tables are in Appendix~\ref{app:protocol}.
-PsiLogic uses fixed per-arena presets. Only the learning rate is tuned, same as the baselines.
-
-\subsection{Main Results}
-
-\begin{table}[t]
-  \centering
-  \caption{Main FairBench results (mean $\pm$ std over 3 seeds). Best per row in bold.}
-  \label{tab:main}
-  \small
-  \setlength{\tabcolsep}{4pt}
-  \begin{tabular}{llcccc}
-    \toprule
-    Arena & Metric & Adam & AdamW & Lion & \textbf{PsiLogic} \\
-    \midrule
-    NLP & Perplexity $\downarrow$ & $13.66 \pm 0.22$ & $8.17 \pm 0.08$ & $21.04 \pm 1.41$ & $\mathbf{7.79 \pm 0.18}$ \\
-    NLP & Val loss $\downarrow$ & $2.614 \pm 0.016$ & $2.101 \pm 0.010$ & $3.045 \pm 0.068$ & $\mathbf{2.053 \pm 0.023}$ \\
-    ViT & Val acc $\uparrow$ & $0.079 \pm 0.003$ & $0.223 \pm 0.002$ & $0.213 \pm 0.002$ & $\mathbf{0.244 \pm 0.006}$ \\
-    ResNet & Val acc $\uparrow$ & $0.172 \pm 0.004$ & $0.219 \pm 0.005$ & $0.205 \pm 0.007$ & $\mathbf{0.222 \pm 0.001}$ \\
-    Diffusion & Val MSE $\downarrow$ & $0.01987 \pm 0.00006$ & $0.01987 \pm 0.00006$ & $0.02175 \pm 0.00025$ & $0.02009 \pm 0.00045$ \\
-    \bottomrule
-  \end{tabular}
-\end{table}
-
-\noindent\textbf{Selected LRs.} NLP: all $3.16 \times 10^{-4}$. ViT: Adam $3.16 \times 10^{-5}$,
-AdamW/PsiLogic $3.16 \times 10^{-4}$, Lion $10^{-4}$. ResNet: Adam/Lion $10^{-4}$,
-AdamW/PsiLogic $3.16 \times 10^{-4}$. Diffusion: Adam/AdamW/PsiLogic $10^{-3}$, Lion $10^{-4}$.
-Welch $t$-tests, compute costs, and per-seed numbers are in
-Appendix~\ref{app:sig}--\ref{app:seeds}.
-
-\subsection{Learning Curves and Overhead}
-
-\begin{figure}[t]
-  \centering
-  \begin{subfigure}[b]{0.48\linewidth}
-    \centering
-    \includegraphics[width=\linewidth]{figures/vit_val_val_acc.png}
-    \caption{ViT val.\ accuracy.}
-    \label{fig:vit}
-  \end{subfigure}\hfill
-  \begin{subfigure}[b]{0.48\linewidth}
-    \centering
-    \includegraphics[width=\linewidth]{figures/nlp_val_perplexity.png}
-    \caption{NLP perplexity.}
-    \label{fig:nlp}
-  \end{subfigure}\\[0.6em]
-  \begin{subfigure}[b]{0.48\linewidth}
-    \centering
-    \includegraphics[width=\linewidth]{figures/resnet_val_val_acc.png}
-    \caption{ResNet top-1 acc.}
-    \label{fig:resnet}
-  \end{subfigure}\hfill
-  \begin{subfigure}[b]{0.48\linewidth}
-    \centering
-    \includegraphics[width=\linewidth]{figures/vit_train_step_time_s.png}
-    \caption{ViT step time.}
-    \label{fig:overhead}
-  \end{subfigure}
-  \caption{FairBench learning curves (mean $\pm$ std) and ViT per-step wall-time overhead on H100.}
-  \label{fig:curves}
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=\linewidth]{../arxiv/figures/later_quality.pdf}
+\caption{Later partial snapshot: individual seed points and mean with sample SD for all four optimizers. Accuracy is a fraction. No later diffusion outcomes or learning curves are available.}
 \end{figure}
 
-PsiLogic has the best NLP perplexity and ViT accuracy in Table~\ref{tab:main}.
-It beats Adam on ResNet. The edge over AdamW there ($0.222$ vs.\ $0.219$) is not
-significant at three seeds ($p=0.44$). Diffusion ties Adam/AdamW.
-Against Adam, the NLP, ViT, and ResNet gains are significant
-(Appendix~\ref{app:sig}). Against AdamW, ViT and NLP perplexity are significant.
-Step-time overhead reaches 1.79$\times$ on ViT (Figure~\ref{fig:curves}, panel~d).
-The chaos detector itself is a few scalars; the extra time on this run is in the
-step implementation (Section~\ref{sec:limitations}).
+\subsection{Wall time and memory}
 
-\section{Ablations and Component Analysis}
+\noindent\begin{minipage}{\linewidth}
+Table 3. Later run wall time in seconds, mean \(\pm\) sample SD; final column is ratio of means.\par
+\begin{center}
+\small
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
+\toprule
+\textbf{Arena} & \textbf{Adam} & \textbf{AdamW} & \textbf{Lion} & \textbf{PsiLogic} & \textbf{\path{Psi/AdamW}} \\
+\midrule
+NLP & 20.49 \(\pm\) 0.17 & 20.22 \(\pm\) 0.07 & 19.90 \(\pm\) 0.07 & 22.22 \(\pm\) 0.18 & 1.099\(\times\) \\
+VIT & 113.58 \(\pm\) 1.90 & 114.45 \(\pm\) 3.76 & 112.69 \(\pm\) 1.88 & 117.18 \(\pm\) 0.34 & 1.024\(\times\) \\
+RESNET & 36.08 \(\pm\) 0.49 & 35.87 \(\pm\) 0.38 & 35.34 \(\pm\) 0.18 & 37.25 \(\pm\) 0.72 & 1.038\(\times\) \\
+\bottomrule
+\end{tabularx}
+\end{center}
 
-Prior ablations on a synthetic MLP (v0.3.x) found that gradient centralization and
-adaptive gradient clipping each help stability when combined with the chaos term.
-A mirror ablation set AdamW's weight decay to PsiLogic's cancellation magnitude at
-each step. That did not reproduce PsiLogic's per-parameter behavior, so the chaos
-signal is not the same thing as one global weight-decay schedule.
+\end{minipage}\par
+Overhead relative to AdamW is about 9.9\% for NLP, 2.4\% for ViT, and 3.8\% for ResNet. This supports modest end-to-end overhead in these recorded workloads. It does not show PsiLogic is faster than AdamW, quantify optimizer-only overhead, or isolate fusion's contribution.
 
-Those runs predate FairBench. Component tests are in \texttt{tests/}. FairBench-scale
-ablations of $\gamma$, \texttt{max\_cancel}, and \texttt{chaos\_warmup} are not in
-this preprint.
+\noindent\begin{minipage}{\linewidth}
+Table 4. Peak allocated GPU memory in MiB (bytes divided by 1024 squared), mean \(\pm\) sample SD. This is not total board usage or reserved memory.\par
+\begin{center}
+\small
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
+\toprule
+\textbf{Peak allocated MiB} & \textbf{Adam} & \textbf{AdamW} & \textbf{Lion} & \textbf{PsiLogic} \\
+\midrule
+NLP & 458.4 \(\pm\) 0.1 & 458.4 \(\pm\) 0.1 & 446.0 \(\pm\) 0.1 & 458.6 \(\pm\) 0.1 \\
+VIT & 5491.9 \(\pm\) 5.4 & 5492.6 \(\pm\) 3.3 & 5164.4 \(\pm\) 5.3 & 5497.2 \(\pm\) 4.2 \\
+RESNET & 857.3 \(\pm\) 0.4 & 855.6 \(\pm\) 0.4 & 812.7 \(\pm\) 0.4 & 857.8 \(\pm\) 0.4 \\
+\bottomrule
+\end{tabularx}
+\end{center}
 
-\section{Discussion}
+\end{minipage}\par
+Within later arenas, PsiLogic and AdamW have similar allocations. Lion uses less memory. There is no demonstrated memory advantage for PsiLogic; the large cross-snapshot ViT memory change is unexplained by saved metadata.
 
-\paragraph{Why the damping helps.}
-The ViT gap vs.\ Adam ($0.244$ vs.\ $0.079$) is large and shows up early. The chaos
-term is a plausible reason: it cuts the step when gradient statistics are still
-swinging. After a per-optimizer LR sweep, NLP perplexity still favors PsiLogic
-over AdamW.
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=\linewidth]{../arxiv/figures/wall_time_snapshots.pdf}
+\caption{Recorded wall time for AdamW and PsiLogic by snapshot. Bars show means, error bars sample SD, and labels ratios of means. Environments and some selected rates differ; no later diffusion measurement exists.}
+\end{figure}
 
-\paragraph{Implicit warmup.}
-The cancellation term also shrinks the effective step during those swings. That is
-similar to LR warmup, except the amount comes from the gradient statistics instead
-of a step counter. Related to the hypergradient and parameter-free LR methods in
-Section~\ref{sec:related}, but a different mechanism.
+\subsection{Paired comparisons and rates}
 
-\paragraph{Seed spread.}
-On ResNet, PsiLogic has the smallest cross-seed standard deviation of the four
-($\pm 0.001$ on accuracy). Three seeds is a thin estimate of that.
+The saved optimizer-only profile gives a different cost picture. Its CUDA workload has 202,506 parameters in 50 tensors. The accompanying profiling script compares against foreach AdamW. The saved file reports one median per method, without repeated-run uncertainty or raw timing samples:
 
-\paragraph{Limitations.}
-\label{sec:limitations}
-\begin{enumerate}[leftmargin=*, itemsep=2pt]
-  \item Three seeds. ResNet vs.\ AdamW and diffusion vs.\ AdamW are not significant.
-  \item 2000 steps per arena. Not ImageNet-scale, and not LLM-scale.
-  \item Step time up to 1.79$\times$ AdamW on ViT (June 2026 H100, before fusion).
-    The chaos detector is a few scalars. The extra time on that run is in the step
-    implementation. v0.5+ adds an optional Triton fused CUDA step
-    (\texttt{psilogic[cuda]}, \texttt{use\_fused\_cuda=True}) with the same update,
-    aimed at $\leq 1.25\times$ AdamW step time on Ampere+. A fused FairBench H100
-    re-run is not in this preprint.
-  \item No quality win on diffusion over Adam/AdamW at this budget.
-  \item No convergence proof. The stability claims are empirical.
-  \item It has not been replicated outside this repository.
-  \item From v0.6 the bare constructor disables AGC and gradient centralization.
-    Task presets and FairBench arena configs may still enable them. Record the
-    preset if you compare against this paper.
-\end{enumerate}
+\begin{center}
+\small
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
+\toprule
+\textbf{Method} & \textbf{Saved median step (ms)} & \textbf{Ratio to AdamW} \\
+\midrule
+AdamW & 0.603 & 1.00\(\times\) \\
+PsiLogic (foreach) & 4.986 & 8.27\(\times\) \\
+PsiLogic (fused) & 1.371 & 2.27\(\times\) \\
+\bottomrule
+\end{tabularx}
+\end{center}
 
-\section{Reproducibility Statement}
+Fusion is much faster than PsiLogic's foreach path on this small workload, but the fused step is still about 2.27 times the AdamW step. That is compatible with a small full-training overhead when \path{forward/backward} work dominates, although this separate microbenchmark does not establish the optimizer's share of the three arena runtimes. The saved run note is dated 24 September 2026. Its availability check for Triton supports the intended fused evaluation, but does not replace per-run backend traces or provide a matched comparison with the older environment.
 
-\begin{lstlisting}
-git clone https://github.com/Troxter222/psilogic
-cd psilogic && pip install -e ".[benchmark]" && pip install -r benchmark/requirements.txt
+\noindent\begin{minipage}{\linewidth}
+Table 5. Later primary-quality tests, raw p / Holm-adjusted p, across nine comparisons. Direction follows Table 1.\par
+\begin{center}
+\small
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
+\toprule
+\textbf{Arena} & \textbf{vs Adam raw / Holm} & \textbf{vs AdamW raw / Holm} & \textbf{vs Lion raw / Holm} \\
+\midrule
+NLP & 0.000275 / 0.00248 & 0.443 / 0.886 & 0.00446 / 0.0235 \\
+VIT & 0.000882 / 0.00706 & 0.00735 / 0.0294 & 0.00338 / 0.0235 \\
+RESNET & 0.00336 / 0.0235 & 0.902 / 0.902 & 0.0843 / 0.253 \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\end{minipage}\par
+\noindent\begin{minipage}{\linewidth}
+Table 6. Later selected base learning rates.\par
+\begin{center}
+\small
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
+\toprule
+\textbf{Arena} & \textbf{Adam} & \textbf{AdamW} & \textbf{Lion} & \textbf{PsiLogic} \\
+\midrule
+NLP & 0.000316 & 0.000316 & 0.000316 & 0.000316 \\
+VIT & 3.16e-05 & 3.16e-05 & 1e-05 & 3.16e-05 \\
+RESNET & 0.0001 & 0.000316 & 0.0001 & 0.000316 \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\end{minipage}\par
+\section{Historical reference outcomes}
+
+These four-arena results are the reference experiment reported in the original arXiv preprint [1]. They are retained here with recalculated statistics, separately from the quality associated with later timing.
+
+\noindent\begin{minipage}{\linewidth}
+Table 7. Reference primary metrics, mean \(\pm\) sample SD; bold is best mean.\par
+\begin{center}
+\small
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
+\toprule
+\textbf{Primary metric} & \textbf{Adam} & \textbf{AdamW} & \textbf{Lion} & \textbf{PsiLogic} \\
+\midrule
+NLP perplexity (lower) & 13.66 \(\pm\) 0.22 & 8.17 \(\pm\) 0.08 & 21.04 \(\pm\) 1.41 & \textbf{7.79 \(\pm\) 0.18} \\
+ViT accuracy (higher) & 0.0787 \(\pm\) 0.0035 & 0.2229 \(\pm\) 0.0024 & 0.2127 \(\pm\) 0.0018 & \textbf{0.2444 \(\pm\) 0.0060} \\
+ResNet accuracy (higher) & 0.1716 \(\pm\) 0.0044 & 0.2192 \(\pm\) 0.0052 & 0.2045 \(\pm\) 0.0070 & \textbf{0.2221 \(\pm\) 0.0014} \\
+Diffusion MSE (lower) & \textbf{0.01987 \(\pm\) 0.00006} & 0.01987 \(\pm\) 0.00006 & 0.02175 \(\pm\) 0.00025 & 0.02009 \(\pm\) 0.00045 \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\end{minipage}\par
+\noindent\begin{minipage}{\linewidth}
+Table 8. Recalculated reference tests, raw p / adjusted p across 12 comparisons.\par
+\begin{center}
+\small
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
+\toprule
+\textbf{Arena} & \textbf{vs Adam raw / Holm} & \textbf{vs AdamW raw / Holm} & \textbf{vs Lion raw / Holm} \\
+\midrule
+NLP & 0.000823 / 0.00906 & 0.0255 / 0.153 & 0.00394 / 0.0394 \\
+VIT & 0.000518 / 0.00622 & 0.0465 / 0.232 & 0.0174 / 0.122 \\
+RESNET & 0.00439 / 0.0395 & 0.512 / 1 & 0.0586 / 0.235 \\
+DIFFUSION & 0.435 / 1 & 0.435 / 1 & 0.00503 / 0.0403 \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\end{minipage}\par
+These replace the old unadjusted Welch significance claims. Mean ordering is unchanged; inference must follow the recalculated tests rather than old stars. Reference means favor PsiLogic in NLP and ViT, give a small ResNet difference from AdamW, and slightly worse diffusion MSE than \path{Adam/AdamW.} None of the four primary comparisons against AdamW meets the adjusted 0.05 threshold: adjusted p is 0.153 for NLP, 0.232 for ViT, and 1 for ResNet and diffusion. These data therefore do not establish a corrected quality advantage over AdamW, including on diffusion.
+
+\noindent\begin{minipage}{\linewidth}
+Table 9. Reference run wall time in seconds and ratio of means.\par
+\begin{center}
+\small
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
+\toprule
+\textbf{Arena} & \textbf{Adam} & \textbf{AdamW} & \textbf{Lion} & \textbf{PsiLogic} & \textbf{\path{Psi/AdamW}} \\
+\midrule
+NLP & 46.56 \(\pm\) 1.38 & 45.94 \(\pm\) 1.59 & 38.19 \(\pm\) 7.36 & 55.23 \(\pm\) 0.83 & 1.202\(\times\) \\
+VIT & 95.18 \(\pm\) 8.85 & 98.54 \(\pm\) 5.89 & 98.57 \(\pm\) 5.59 & 176.73 \(\pm\) 5.36 & 1.793\(\times\) \\
+RESNET & 45.26 \(\pm\) 1.09 & 47.59 \(\pm\) 1.27 & 46.13 \(\pm\) 1.46 & 67.44 \(\pm\) 0.64 & 1.417\(\times\) \\
+DIFFUSION & 94.21 \(\pm\) 0.95 & 95.20 \(\pm\) 3.27 & 91.62 \(\pm\) 1.67 & 168.32 \(\pm\) 2.59 & 1.768\(\times\) \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\end{minipage}\par
+Reference ratios are about 1.20\(\times\), 1.79\(\times\), 1.42\(\times\), and 1.77\(\times\) for NLP, ViT, ResNet, and diffusion. They describe that environment, not later partial measurements. The difference documents an observed cost change without attributing all of it to fusion.
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=\linewidth]{../arxiv/figures/reference_learning_curves.pdf}
+\caption{Historical reference validation curves regenerated from steps.csv. Lines show means and bands sample SD across three seeds at recorded steps. NLP and diffusion axes are logarithmic. These are not later curves or new training measurements of current source.}
+\end{figure}
+
+\section{Discussion and limitations}
+
+The clearest engineering observation is smaller relative full-run overhead in the later snapshot. This coexists with a 2.27-fold optimizer-step cost in the separate saved microbenchmark; the two measurements answer different questions. Quality is less consistent: the older NLP and ViT advantages are not both present later. Software, selected rates, unrecorded \path{architecture/configuration} details, and possible implementation changes remain candidate explanations. Measurements do not isolate these factors or separate cancellation from preprocessing and presets.
+
+Other exploratory NLP follow-ups and older experiments exist. We do not pool them because their settings differ. This is a retrospective report in a project with multiple experiments, not preregistered confirmation. Unit tests establish software properties under tested conditions, not better generalization.
+
+Evidence is limited to three seeds per combination, small models, and short configured budgets. There is no later diffusion outcome, later step history, matched time-to-quality analysis, external replication established by these artifacts, or convergence proof. Exact training commits, resolved settings, and backend traces are absent. Validation used for LR selection is not an untouched test set. Equal LR candidate counts do not equalize all search effort.
+
+The detector measures relative norm changes and disagreement, not curvature, noise variance, or proof a step is harmful. Its baseline sigmoid value allows damping under steady gradients. Small gradients do not guarantee zero damping. Secondary decay is separate, and epsilon placement makes the zero-cancellation limit different from standard AdamW.
+
+A controlled follow-up should pin code, architecture, data processing, effective batch, precision, and environment; record resolved arguments and backend; compare execution paths under matching settings; and repeat all four tasks with more seeds. Ablations should separately disable cancellation, preprocessing, and secondary decay. Fixed-step quality and time to a prespecified target should both be reported, including unsuccessful runs. These are proposed experiments, not completed evidence.
+
+\section{Reproducing this revision}
+
+PAPER.md is the source for generated LaTeX and PDF. Tables, figures, paired tests, and file hashes are derived from saved measurements:
+
+\begin{Verbatim}[fontsize=\small]
+python scripts/paper_results.py
+python scripts/build_arxiv_pdf.py
+\end{Verbatim}
+
+Analysis requires NumPy, SciPy, and Matplotlib; PDF compilation requires pdflatex or the repository's Tectonic executable. Canonical output is \path{output/pdf/paper.pdf}, with copies at \path{arxiv/paper.pdf} and psilogic-arxiv.pdf. Analysis and provenance hashes are in \path{arxiv/generated.} Hashes identify analyzed files, not unknown training revisions. Source CSVs remain unchanged. No training or downloads occur during this analysis.
+
+For scholarly citation of PsiLogic, use the original arXiv preprint [1]: arXiv:2607.16268, \url{https://arxiv.org/pdf/2607.16268,} article DOI \url{https://doi.org/10.48550/arXiv.2607.16268}. The Zenodo software record [5] is a supplementary reference for code and artifacts. The revised equations and reanalysis in this local manuscript are dated separately from the original arXiv version.
+
+To evaluate the current update, install benchmark dependencies and prepare datasets as documented in \path{benchmark/README.md.} Record the source revision and resolved arguments before starting:
+
+\begin{Verbatim}[fontsize=\small]
+pip install -e ".[benchmark,cuda]"
+pip install -r benchmark/requirements.txt
 cd benchmark
-python -m fairbench.download --data-root ./data
-python -m fairbench --data-root ./data --output-dir results/full
-\end{lstlisting}
-Reference outputs: \texttt{benchmark/results/full/\{aggregate,summary,significance\}.csv}\\
-Software DOI: \texttt{10.5281/zenodo.18739857} \quad PyPI: \texttt{pip install psilogic}
+python -m fairbench --data-root ./data --output-dir results/current_rerun
+\end{Verbatim}
+
+This starts a current-default experiment, not a reconstruction of unspecified historical settings. The same optimizer name alone does not make an older table reproducible.
 
 \section{Conclusion}
 
-PsiLogic adds a chaos-gated Active Cancellation term to Adam. The term is large
-while gradient statistics are unstable and goes to zero at convergence. On the H100
-FairBench run it wins NLP perplexity and ViT accuracy, beats Adam and ties AdamW on
-ResNet, and ties on diffusion. Wall time on that run was 1.2--1.8$\times$ AdamW,
-before fusion. Still open: a fused re-run, more seeds, longer training, and a
-replication that is not this repo.
+PsiLogic adds bounded tensor-wise damping around an Adam-style direction, with optional preprocessing, secondary decay, and Lion mode. The equations include details that change its mathematics. Later H100 measurements show 2.4-9.9\% additional recorded run time relative to AdamW across three tasks, near-AdamW NLP and ResNet means, and worse ViT accuracy. The separate optimizer-only microbenchmark still costs 2.27\(\times\) AdamW for fused PsiLogic. Older four-task outcomes remain separate. These findings justify controlled evaluation, not a universal quality claim or a claim that historical tables validate every detail of today's code.
 
-\bibliographystyle{plain}
-\begin{thebibliography}{99}
-\bibitem{baydin2017hypergrad}
-A.~G. Baydin, R.~Cornish, M.~Rubinstein, and D.~M. Wood.
-Online learning rate adaptation with hypergradient descent. \emph{ICLR}, 2018.
+\section*{References}
 
-\bibitem{brock2021nfn}
-A.~Brock, et al.
-High-performance large-scale image recognition without normalization. \emph{ICML}, 2021.
+[1] A. Sultonov. PsiLogic: Chaos-Aware Active Cancellation for Adam with a Fair Cross-Domain Benchmark. arXiv:2607.16268v1 [cs.LG], 5 July 2026. \url{https://arxiv.org/pdf/2607.16268}. Article DOI: \url{https://doi.org/10.48550/arXiv.2607.16268}. Original paper and primary scholarly reference.
 
-\bibitem{chen2023lion}
-X.~Chen, C.~Liang, D.~Huang, E.~Real, K.~Wang, Y.~Liu, et al.
-Symbolic discovery of optimization algorithms. \emph{NeurIPS}, 2023.
+[2] D. P. Kingma and J. Ba. Adam: A Method for Stochastic Optimization. ICLR, 2015. \url{https://arxiv.org/abs/1412.6980}.
 
-\bibitem{defazio2023dadapt}
-M.~Defazio and K.~Mishchenko.
-Learning-rate-free learning by D-Adaptation. \emph{ICML}, 2023.
+[3] I. Loshchilov and F. Hutter. Decoupled Weight Decay Regularization. ICLR, 2019. \url{https://arxiv.org/abs/1711.05101}.
 
-\bibitem{goyal2017large}
-P.~Goyal, et al.
-Accurate, large minibatch SGD. \emph{arXiv preprint} \href{https://arxiv.org/abs/1706.02677}{arXiv:1706.02677}, 2017.
+[4] X. Chen et al. Symbolic Discovery of Optimization Algorithms. NeurIPS, 2023. \url{https://arxiv.org/abs/2302.06675}.
 
-\bibitem{gupta2018shampoo}
-V.~Gupta, T.~Koren, and Y.~Singer.
-Shampoo: Preconditioned stochastic tensor optimization. \emph{ICML}, 2018.
+[5] A. Sultonov. PsiLogic software and FairBench artifacts. Supplementary software record: \url{https://doi.org/10.5281/zenodo.18739857}. Numerical sources for this local revision are the snapshots identified in Section 4.
 
-\bibitem{kingma2015adam}
-D.~P. Kingma and J.~Ba.
-Adam: A method for stochastic optimization. \emph{ICLR}, 2015.
+\section*{Appendix A. Later per-seed primary outcomes}
 
-\bibitem{liu2023sophia}
-H.~Liu, Z.~Shen, Y.~Li, S.~Lin, K.~Wang, and L.~Ma.
-Sophia: A scalable stochastic second-order optimizer. \emph{ICLR}, 2024.
+Accuracy is a fraction; tests use seed values before rounding.
 
-\bibitem{loshchilov2019adamw}
-I.~Loshchilov and F.~Hutter.
-Decoupled weight decay regularization. \emph{ICLR}, 2019.
+\begin{center}
+\small
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
+\toprule
+\textbf{Arena / seed} & \textbf{Adam} & \textbf{AdamW} & \textbf{Lion} & \textbf{PsiLogic} \\
+\midrule
+NLP / 0 & 13.86950 & 8.40920 & 19.05928 & 8.27578 \\
+NLP / 1 & 13.81303 & 8.02130 & 21.56638 & 7.96639 \\
+NLP / 2 & 13.75750 & 8.17168 & 20.86497 & 8.21472 \\
+VIT / 0 & 0.11420 & 0.28720 & 0.30890 & 0.27290 \\
+VIT / 1 & 0.12020 & 0.28260 & 0.30390 & 0.26880 \\
+VIT / 2 & 0.11630 & 0.27780 & 0.30190 & 0.25980 \\
+RESNET / 0 & 0.17570 & 0.22080 & 0.20720 & 0.22120 \\
+RESNET / 1 & 0.16750 & 0.21650 & 0.20280 & 0.22280 \\
+RESNET / 2 & 0.16970 & 0.22680 & 0.21250 & 0.21830 \\
+\bottomrule
+\end{tabularx}
+\end{center}
 
-\bibitem{mishchenko2023prodigy}
-K.~Mishchenko and M.~Defazio.
-Prodigy: An expeditiously adaptive parameter-free learner. \emph{arXiv preprint} \href{https://arxiv.org/abs/2306.06169}{arXiv:2306.06169}, 2023.
+\section*{Appendix B. Reference selected rates}
 
-\bibitem{shazeer2018adafactor}
-N.~Shazeer and M.~Stern.
-Adafactor: Adaptive learning rates with sublinear memory cost. \emph{ICML}, 2018.
+\begin{center}
+\small
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
+\toprule
+\textbf{Arena} & \textbf{Adam} & \textbf{AdamW} & \textbf{Lion} & \textbf{PsiLogic} \\
+\midrule
+NLP & 0.000316 & 0.000316 & 0.000316 & 0.000316 \\
+VIT & 3.16e-05 & 0.000316 & 0.0001 & 0.000316 \\
+RESNET & 0.0001 & 0.000316 & 0.0001 & 0.000316 \\
+DIFFUSION & 0.001 & 0.001 & 0.0001 & 0.001 \\
+\bottomrule
+\end{tabularx}
+\end{center}
 
-\bibitem{yong2020gc}
-H.~Yong, J.~Huang, X.~Hua, and L.~Zhang.
-Gradient centralization. \emph{ECCV}, 2020.
+\section*{Appendix C. Reference per-seed primary outcomes}
 
-\bibitem{you2017lars}
-Y.~You, I.~Gitman, and B.~Ginsburg.
-Large batch training of convolutional networks with layer-wise adaptive rate scaling. \emph{arXiv preprint} \href{https://arxiv.org/abs/1708.03888}{arXiv:1708.03888}, 2017.
+\begin{center}
+\small
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
+\toprule
+\textbf{Arena / seed} & \textbf{Adam} & \textbf{AdamW} & \textbf{Lion} & \textbf{PsiLogic} \\
+\midrule
+NLP / 0 & 13.89225 & 8.18040 & 19.46536 & 7.87066 \\
+NLP / 1 & 13.64020 & 8.09092 & 21.46757 & 7.58325 \\
+NLP / 2 & 13.44957 & 8.24811 & 22.18221 & 7.91506 \\
+VIT / 0 & 0.07750 & 0.22550 & 0.21440 & 0.23760 \\
+VIT / 1 & 0.08260 & 0.22220 & 0.21080 & 0.24680 \\
+VIT / 2 & 0.07590 & 0.22090 & 0.21300 & 0.24880 \\
+RESNET / 0 & 0.17510 & 0.21940 & 0.20240 & 0.22090 \\
+RESNET / 1 & 0.16660 & 0.21400 & 0.19890 & 0.22360 \\
+RESNET / 2 & 0.17300 & 0.22430 & 0.21230 & 0.22170 \\
+DIFFUSION / 0 & 0.01985 & 0.01985 & 0.02169 & 0.02004 \\
+DIFFUSION / 1 & 0.01982 & 0.01982 & 0.02153 & 0.01967 \\
+DIFFUSION / 2 & 0.01993 & 0.01993 & 0.02202 & 0.02057 \\
+\bottomrule
+\end{tabularx}
+\end{center}
 
-\bibitem{you2019lamb}
-Y.~You, J.~Li, S.~Reddi, J.~Hseu, S.~Kumar, S.~Bhojanapalli, X.~Song, J.~Demmel, and C.-J.~Hsieh.
-Large batch optimization for deep learning: Training BERT in 76 minutes. \emph{ICLR}, 2020.
-\end{thebibliography}
-
-\appendix
-
-\section{FairBench Protocol and Arenas}
-\label{app:protocol}
-
-\begin{table}[h]
-  \centering
-  \caption{FairBench protocol stages.}
-  \label{tab:protocol}
-  \small
-  \begin{tabularx}{\linewidth}{lX}
-    \toprule
-    Stage & Description \\
-    \midrule
-    \textbf{Stage 1, LR sweep} & 7 log-spaced LRs from $10^{-5}$ to $10^{-2}$; 500 steps each; best val metric wins \\
-    \textbf{Stage 2, evaluation} & Selected LR; 2000 steps; seeds $\{0,1,2\}$; identical init per seed \\
-    \textbf{Shared} & batch=64, bf16 AMP, grad\_clip=1.0, cosine LR, 100-step warmup \\
-    \textbf{Statistics} & Mean $\pm$ std; Welch $t$-test (PsiLogic vs.\ each baseline) \\
-    \bottomrule
-  \end{tabularx}
-\end{table}
-
-\begin{table}[h]
-  \centering
-  \caption{FairBench arenas.}
-  \label{tab:arenas}
-  \small
-  \begin{tabular}{llll}
-    \toprule
-    Arena & Model & Dataset & Metric \\
-    \midrule
-    NLP & Small GPT & TinyStories & Perplexity $\downarrow$, val loss $\downarrow$ \\
-    ViT & ViT-Tiny patch16 224 & CIFAR-100 @ $224^2$ & Top-1 acc $\uparrow$ \\
-    ResNet & ResNet-18 & Tiny ImageNet 200 & Top-1 acc $\uparrow$ \\
-    Diffusion & DDPM + UNet & CelebA @ $64^2$ & Val MSE $\downarrow$ \\
-    \bottomrule
-  \end{tabular}
-\end{table}
-
-\section{Statistical Significance}
-\label{app:sig}
-
-\begin{table}[h]
-  \centering
-  \caption{Welch $t$-test: PsiLogic vs.\ baseline. $^{*}p<0.05$, $^{**}p<0.01$, $^{***}p<0.001$; n.s.\ = not significant.}
-  \label{tab:sig}
-  \small
-  \begin{tabular}{llccc}
-    \toprule
-    Arena & Metric & vs Adam & vs AdamW & vs Lion \\
-    \midrule
-    NLP & Perplexity & $^{***}$ & $^{*}$ & $^{**}$ \\
-    NLP & Val loss & $^{***}$ & n.s.\ ($p{=}0.054$) & $^{***}$ \\
-    ViT & Val acc & $^{***}$ & $^{*}$ & $^{**}$ \\
-    ResNet & Val acc & $^{**}$ & n.s.\ ($p{=}0.44$) & $^{*}$ \\
-    Diffusion & Val MSE & n.s. & n.s. & $^{*}$ \\
-    \bottomrule
-  \end{tabular}
-\end{table}
-
-\section{Compute Cost}
-\label{app:compute}
-
-\begin{table}[h]
-  \centering
-  \caption{Compute cost on H100. A/W/L/P = Adam/AdamW/Lion/PsiLogic.}
-  \label{tab:compute}
-  \small
-  \begin{tabular}{lccc}
-    \toprule
-    Arena & Peak VRAM (MB) A/W/L/P & Wall time (s) A/W/L/P & PsiLogic / AdamW \\
-    \midrule
-    NLP & 458 / 458 / 445 / 458 & 46.6 / 45.9 / 38.2 / 55.2 & 1.20$\times$ \\
-    ViT & 1229 / 1229 / 1208 / 1229 & 95.2 / 98.5 / 98.6 / 176.7 & \textbf{1.79$\times$} \\
-    ResNet & 823 / 825 / 777 / 823 & 45.3 / 47.6 / 46.1 / 67.4 & 1.42$\times$ \\
-    Diffusion & 3780 / 3780 / 3768 / 3781 & 94.2 / 95.2 / 91.6 / 168.3 & \textbf{1.77$\times$} \\
-    \bottomrule
-  \end{tabular}
-\end{table}
-
-VRAM differences are $\le 3\%$ except Lion on ResNet/NLP (lower).
-
-\section{Per-Seed Results}
-\label{app:seeds}
-
-\begin{table}[h]
-  \centering
-  \caption{Per-seed ViT validation accuracy.}
-  \label{tab:vit-seeds}
-  \begin{tabular}{rcccc}
-    \toprule
-    Seed & Adam & AdamW & Lion & \textbf{PsiLogic} \\
-    \midrule
-    0 & 0.078 & 0.226 & 0.214 & \textbf{0.238} \\
-    1 & 0.083 & 0.222 & 0.211 & \textbf{0.247} \\
-    2 & 0.076 & 0.221 & 0.213 & \textbf{0.249} \\
-    \bottomrule
-  \end{tabular}
-\end{table}
-Full per-seed tables for all arenas: \texttt{benchmark/results/full/summary.csv}.
-
-\section{Archived Experiments}
-
-Pre-FairBench results (CIFAR-10 on an A40, BERT, AG News, and others) are in
-\texttt{OLD\_RESULTS.md}. They are not used for claims in this preprint.
-
-\vfill
-\arxivcomment{Ali Sultonov $\cdot$ Independent Researcher $\cdot$ arXiv preprint $\cdot$ \url{https://github.com/Troxter222/psilogic}}
-
+\clearpage
 \end{document}

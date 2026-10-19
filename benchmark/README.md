@@ -62,8 +62,9 @@ continues.
 
 ## Outputs
 
-Written under `--output-dir`. The H100 reference run is committed at
-`results/full/` and is what README, PAPER, and logs.md cite.
+Written under `--output-dir`. The June H100 reference run is committed at
+`results/full/`. The later partial H100 snapshot is in `results/fused_h100/`;
+README and PAPER distinguish the two. `logs.md` describes the historical run.
 
 ```
 results/full/

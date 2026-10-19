@@ -62,16 +62,9 @@ if _HAS_TRITON:
         offsets = pid * BLOCK + tl.arange(0, BLOCK)
         mask = offsets < n_elements
 
-        # Under eager dispatch (kernel[grid](...)) Triton infers these plain
-        # Python floats as fp32. Under torch.compile/Inductor's generated
-        # wrapper the same call site specializes them as fp64 doubles
-        # instead (matching aten's default scalar promotion), which makes
-        # ``g``'s dtype diverge between the two branches of the
-        # ``if grad_centralize`` block below (fp32 on the implicit "else",
-        # fp64 on the "then") — Triton rejects that at compile time. Casting
-        # to fp32 up front pins the dtype so both branches agree, with no
-        # change to the arithmetic itself (all these scalars are already
-        # meant to be single precision here).
+        # Inductor may specialize Python floats as fp64 rather than eager
+        # Triton's fp32. Cast explicitly so both centralization branches
+        # produce the same dtype; Triton rejects mismatched branch types.
         leader_count = leader_count.to(tl.float32)
         beta1 = beta1.to(tl.float32)
         beta2 = beta2.to(tl.float32)
@@ -125,13 +118,8 @@ if _HAS_TRITON:
         offsets = pid * BLOCK + tl.arange(0, BLOCK)
         mask = offsets < n_elements
 
-        # Same fp32/fp64 specialization hazard as `_centralize_moment_kernel`
-        # above: under eager dispatch these Python-float kernel arguments
-        # infer as fp32, but torch.compile/Inductor's wrapper can specialize
-        # the same call site to fp64, which then makes `p`/`m` diverge in
-        # dtype between the `if`/`else` branches below and Triton rejects
-        # it at compile time. Pin them to fp32 up front — no change to the
-        # arithmetic, these were always meant to be single precision here.
+        # Keep scalar arguments in fp32 under eager and Inductor dispatch,
+        # as in _centralize_moment_kernel, to avoid branch dtype mismatches.
         lr = lr.to(tl.float32)
         eps = eps.to(tl.float32)
         step_size = step_size.to(tl.float32)
@@ -204,33 +192,13 @@ if _HAS_TRITON:
         n_leaders,
         BLOCK: tl.constexpr,
     ):
-        """One-launch fusion of ``_centralize_moment_kernel`` +
-        ``_decay_adam_kernel``.
+        """Combine moment preparation, decay and the update in one launch.
 
-        Same fp32/fp64 Inductor-specialization hazard as the two kernels
-        above, so every scalar argument is pinned to fp32 up front for the
-        same reason (no change to the arithmetic).
-
-        Mirrors the exact two-kernel sequence:
-
-        - ``computed_m = beta1*m + (1-beta1)*g`` is the *same* expression
-          the old ``_centralize_moment_kernel`` computed as ``new_m`` *and*
-          the same expression the old ``_decay_adam_kernel``'s lion branch
-          recomputed as ``update`` (it re-derived it from the still-old
-          ``m`` because the first kernel only *stored* ``new_m`` when
-          ``update_momentum`` was true, i.e. never for lion) — so it is
-          computed once here and reused for both purposes.
-        - For non-lion, ``computed_m`` and the freshly computed variance are
-          exactly what the second kernel used to re-load from global memory
-          after the first kernel wrote them; here they simply stay in
-          registers.
-        - For lion, the *new* lion-style momentum
-          (``beta2*m_old + (1-beta2)*g``) still reads the *original* ``m``,
-          matching the old kernel's use of the not-yet-overwritten ``m``.
-        - The ``raw_g`` snapshot round trip through a scratch buffer is
-          gone: with everything in one launch there is no second kernel
-          that needs to re-read it from global memory, so it is simply
-          read once here from ``raw_grad_ptr`` for quantum decay.
+        Cast scalar arguments to fp32 for consistent Inductor specialization.
+        Adam uses the updated moments directly from registers. Lion uses
+        ``beta1*m_old + (1-beta1)*g`` for its direction, then stores
+        ``beta2*m_old + (1-beta2)*g`` as momentum. Quantum decay reads the
+        original gradient from ``raw_grad_ptr`` without a scratch copy.
         """
         pid = tl.program_id(0)
         offsets = pid * BLOCK + tl.arange(0, BLOCK)

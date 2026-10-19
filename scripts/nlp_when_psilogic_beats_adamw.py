@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Big NLP sweep: when / how PsiLogic beats AdamW.
+"""Compare AdamW and PsiLogic across NLP settings and ablations.
 
 Runs FairBench TinyStories + small-GPT with AdamW vs many PsiLogic configs:
 
 * **regimes** — change train setup (steps, model size, context, LR protocol)
 * **ablations** — on a fixed paper-like setup, toggle PsiLogic knobs on/off
   and try value variants (gamma, AGC, centralize, chaos, lion, …)
-* **combos** — a few multi-knob presets that often matter together
+* **combos** — compare combinations of optimizer settings
 
-Outputs a large comparable table (CSV + Markdown + console), sorted by
+Outputs tables (CSV, Markdown and console), sorted by
 Δperplexity (AdamW − PsiLogic; positive ⇒ PsiLogic wins).
 
 Examples
@@ -63,9 +63,7 @@ from fairbench.metrics import paired_ttest  # noqa: E402
 from fairbench.runner import BenchmarkRunner  # noqa: E402
 
 
-# --------------------------------------------------------------------------- #
 # Experiment definition
-# --------------------------------------------------------------------------- #
 
 # GPT-from-scratch defaults (same as NLPArena.psilogic_kwargs base).
 _PSI_BASE: dict[str, Any] = {
@@ -137,9 +135,7 @@ class ExpResult:
     output_dir: str
 
 
-# --------------------------------------------------------------------------- #
 # Grid builders
-# --------------------------------------------------------------------------- #
 
 
 def _paper_like(**kwargs: Any) -> dict[str, Any]:
@@ -417,9 +413,7 @@ def all_experiments() -> dict[str, Experiment]:
     return {e.name: e for e in items}
 
 
-# --------------------------------------------------------------------------- #
 # FairBench glue
-# --------------------------------------------------------------------------- #
 
 
 def build_config(
@@ -670,9 +664,7 @@ def ensure_tinystories(data_root: str, *, offline: bool, synthetic: bool) -> Non
     print(f"TinyStories ready: {root}/tinystories/")
 
 
-# --------------------------------------------------------------------------- #
 # Reporting
-# --------------------------------------------------------------------------- #
 
 
 def print_table(results: list[ExpResult]) -> None:
@@ -780,9 +772,7 @@ def write_markdown(results: list[ExpResult], path: Path) -> None:
     print(f"Wrote Markdown: {path}")
 
 
-# --------------------------------------------------------------------------- #
 # CLI
-# --------------------------------------------------------------------------- #
 
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:

@@ -1,0 +1,49 @@
+{
+  "status": "pass",
+  "commands": [
+    {
+      "command": [
+        "pdflatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-output-directory=/mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/research/convergence/verification/latex",
+        "manuscript.tex"
+      ],
+      "exit_code": 0,
+      "log": "verification/latex/pass_1.log"
+    },
+    {
+      "command": [
+        "bibtex",
+        "verification/latex/manuscript"
+      ],
+      "exit_code": 0,
+      "log": "verification/latex/pass_2.log"
+    },
+    {
+      "command": [
+        "pdflatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-output-directory=/mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/research/convergence/verification/latex",
+        "manuscript.tex"
+      ],
+      "exit_code": 0,
+      "log": "verification/latex/pass_3.log"
+    },
+    {
+      "command": [
+        "pdflatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-output-directory=/mnt/JARVIS/Development/Programming/Python/Projects/psilogic-pkg/research/convergence/verification/latex",
+        "manuscript.tex"
+      ],
+      "exit_code": 0,
+      "log": "verification/latex/pass_4.log"
+    }
+  ],
+  "issues": [],
+  "tex_sha256": "f27150dc149c7d3038bb13bf3ab1bb4f8953e887375d42863161a2e4310669c9",
+  "pdf_sha256": "9c6e7485d0175ef36916a288bce8005b2f67c95de0131a9d96ac31624fb70750"
+}

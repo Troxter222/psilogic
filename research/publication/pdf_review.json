@@ -1,0 +1,30 @@
+{
+  "status": "pass",
+  "review": "All pages rendered at 1000 px and inspected in contact sheets; bounding boxes and compiler warnings checked separately. XML control characters from pdftotext removed before parsing.",
+  "files": [
+    {
+      "path": "output/pdf/paper.pdf",
+      "pages": 13,
+      "words_checked": 4870,
+      "word_boxes_outside_page": [],
+      "sha256": "a97f1788a1f5719923636efc3114418a1b89ed3d7dcae967fbb0d5e890e59612",
+      "visual_contact_sheet_review": "pass"
+    },
+    {
+      "path": "research/convergence/manuscript.pdf",
+      "pages": 16,
+      "words_checked": 8513,
+      "word_boxes_outside_page": [],
+      "sha256": "9c6e7485d0175ef36916a288bce8005b2f67c95de0131a9d96ac31624fb70750",
+      "visual_contact_sheet_review": "pass"
+    },
+    {
+      "path": "output/pdf/paper_unified.pdf",
+      "pages": 28,
+      "words_checked": 13469,
+      "word_boxes_outside_page": [],
+      "sha256": "962a3ea7ae1b6774ff964d08a9c1978cb808ae84d07c2cdd6f42dcfa2735c814",
+      "visual_contact_sheet_review": "pass"
+    }
+  ]
+}

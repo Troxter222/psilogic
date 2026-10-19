@@ -1,0 +1,5 @@
+Device: cuda
+Parameters: 202,506 (50 tensors)
+AdamW median step: 0.603 ms
+PsiLogic (foreach) median step: 4.986 ms (8.27x)
+PsiLogic (fused) median step: 1.371 ms (2.27x)

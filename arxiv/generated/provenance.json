@@ -1,0 +1,30 @@
+{
+  "operation": "post-processing of existing measurements; no new training",
+  "statistics": "two-sided seed-paired t-tests; Holm across primary-quality tests within each snapshot (reference:12, later:9)",
+  "source_revision_warning": "Hashes identify files used for this audit, not the unknown exact revisions that produced the archived runs.",
+  "sha256": {
+    "benchmark/results/full/summary.csv": "13eb162ac31927e9393e34829140e6d89ae12c7c9d5014162bee7410a9203cb2",
+    "benchmark/results/full/aggregate.csv": "6ec5bce17c318959f966e820b66af722ccfeb666718911890c7cec178f814472",
+    "benchmark/results/full/config.json": "b8bdb9901a83658e99c219b0b9be0c19ea972abf944f2cdb2fa3328533498052",
+    "benchmark/results/full/lr_sweep.csv": "a438a06b432bd9205a96b32d0341a844dc3b71e8da90861948df7436273c6a55",
+    "benchmark/results/full/significance.csv": "5fa3d7cba1baf0bed079da65cf62b5b6b9d90765d43937968adbf8a220e0c79d",
+    "benchmark/results/fused_h100/summary.csv": "d0b3a678f4340949545f6abe4f7beccc1bd52ccb93e793fd29c2903249b114e0",
+    "benchmark/results/fused_h100/aggregate.csv": "5820dde2533630f7717259784c2e0e5bf0813ae02283be52d1674d674154d835",
+    "benchmark/results/fused_h100/config.json": "e2514e67a757e2ee10146a9501624d4354b2853aa5fd3cfd9bf8c15e327218a3",
+    "benchmark/results/fused_h100/lr_sweep.csv": "7f1b39f051e416ab8cb40bc7b1912ecd4c057398fb0d6edf50803669d76b68ef",
+    "benchmark/results/fused_h100/significance.csv": "75ab7153e02fc344b6dcddc0983b350f69bdfe347bd2683b65572c50538ef422",
+    "benchmark/results/full/steps.csv": "0ad9086f61a52c96b7bdf0d7064c7e484c5c12afc4dbc25efb1c0a8746f91b85",
+    "benchmark/results/fused_h100/profile_20260924T174634Z.txt": "05a68e623fa1e72f2f219f203ada0c050926d8ac32cffab390e4ee8c077e5f76",
+    "benchmark/results/fused_h100/PROOF.md": "61827155e7405c22652959a1bd9f99c1da9c768d90d5073b67a584254b3223fc",
+    "psilogic/optimizer.py": "d6d94716bac5d14a9b461778fada799e159ff3c478fb4a82393b99e5d45766a3",
+    "psilogic/_chaos.py": "bc66d6c4fb96ee2ec47adc265a4de378686c2f9a5a0c740df1d7cd8c9aff3ec5",
+    "psilogic/_cuda/step.py": "91f3a0ae0385410ab288cadc24b350f4e81741088042e446c82baa8d3938dcd4",
+    "psilogic/_cuda/kernels.py": "da9d1bf7c1172cf4e1f4b1037a1b4727c7bccc48566f1ee84e5ac3367583500f",
+    "benchmark/fairbench/runner.py": "86b32e2dcac967e9b672c525457ff48b64d44fd54e66ea3e45ed7f3e68e655de",
+    "scripts/paper_results.py": "afd1986d7daa6c21b9d2867a86c0a52046a591023372d380e13858c991cfaa2d",
+    "scripts/profile_optimizer.py": "4ec1a02ed51609d493e10bb4caef17c611cd29e54a708fde9b684f7eb3dd49ce",
+    "scripts/run_h100_gate1c.sh": "34760f6cb303a50fad2ab0354bd6d3d5e2ddb070a2bc3095d742db2f6d4f3189",
+    "scripts/render_paper.py": "6415cf93e98d137dbf2acee5f6d667a1764437110614e499ec9f395e2baa1645",
+    "scripts/build_arxiv_pdf.py": "8e85c9a19b5c7a30f4036481841807a762be8cf13f438b4a72320243871e3a0e"
+  }
+}

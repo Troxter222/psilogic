@@ -95,8 +95,6 @@ class NLPArena(Arena):
         self._train_ids: Optional[np.ndarray] = None
         self._val_ids: Optional[np.ndarray] = None
 
-    # ------------------------------------------------------------------ #
-
     def _load_text(self) -> tuple[str, str]:
         if self.synthetic:
             return _synthetic_corpus(self.train_chars), _synthetic_corpus(self.val_chars, seed=1)

@@ -1,0 +1,11 @@
+.................................................................sssssss [ 81%]
+sssssssss.......                                                         [100%]
+=========================== short test summary info ============================
+SKIPPED [2] tests/test_numerical_parity.py:234: CUDA not available
+SKIPPED [2] tests/test_numerical_parity.py:251: Triton fused CUDA path unavailable
+SKIPPED [1] tests/test_numerical_parity.py:283: Triton fused CUDA path unavailable
+SKIPPED [8] tests/test_numerical_parity.py:306: Triton fused CUDA path unavailable
+SKIPPED [1] tests/test_numerical_parity.py:350: Triton fused CUDA path unavailable
+SKIPPED [1] tests/test_numerical_parity.py:369: Triton fused CUDA path unavailable
+SKIPPED [1] tests/test_numerical_parity.py:429: Triton fused CUDA path unavailable
+72 passed, 16 skipped in 18.76s
